@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#eef0f5">
+<title>RM Inbox</title>
+<style>
+:root{--ink:#0d1222;--sub:#6b7286;--blue:#0a5cff;--loss:#ff3b30;--gain:#1f9d6b;--bg:#eef0f5;--line:rgba(13,18,34,.08);
+  --surf:linear-gradient(180deg,#fff,#f6f7fb);--shadow:0 0 0 1px rgba(13,18,34,.05),0 1px 2px rgba(13,18,34,.04),0 12px 28px rgba(13,18,34,.07)}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;background:#e3e6ee}
+body{font:16px/1.4 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);
+  background:radial-gradient(120% 80% at 50% 0%,#fbfcfe 0%,#eef0f5 55%,#e3e6ee 100%) fixed;min-height:100vh;-webkit-font-smoothing:antialiased}
+main{max-width:560px;margin:0 auto;padding:16px 16px calc(32px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:center;justify-content:space-between;padding:8px 2px 14px}
+h1{font-size:22px;font-weight:600;letter-spacing:-.02em}
+h1 span{color:var(--blue)}
+.who{font-size:13px;color:var(--sub);text-align:right}
+.tabs{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:16px;
+  background:rgba(255,255,255,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:var(--shadow);margin-bottom:16px}
+.tabs button{border:0;background:none;font:inherit;font-weight:600;font-size:15px;color:var(--sub);padding:11px 0;border-radius:12px}
+.tabs button[aria-selected=true]{background:var(--ink);color:#fff}
+.card{background:var(--surf);border-radius:22px;box-shadow:var(--shadow);padding:18px;margin-bottom:14px}
+.card h2{font-size:17px;font-weight:600;letter-spacing:-.01em;margin-bottom:4px}
+.hint{font-size:13px;color:var(--sub);margin-bottom:12px}
+label{display:block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);margin:12px 0 6px}
+input,textarea{width:100%;font:inherit;font-size:16px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;outline:none}
+input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,92,255,.15)}
+textarea{min-height:96px;resize:vertical}
+input[type=file]{padding:10px;font-size:14px;color:var(--sub)}
+input[type=file]::file-selector-button{font:inherit;font-weight:600;color:var(--blue);background:rgba(10,92,255,.08);border:0;border-radius:10px;padding:9px 14px;margin-right:12px}
+.row{display:flex;gap:8px;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;font:inherit;font-weight:600;font-size:16px;border-radius:14px;padding:14px 18px;cursor:pointer}
+.btn.primary{background:var(--blue);color:#fff;width:100%;box-shadow:0 10px 24px rgba(10,92,255,.28)}
+.btn.primary:disabled{background:#b8c3dc;box-shadow:none}
+.btn.ghost{background:#fff;color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.btn.small{font-size:13px;padding:8px 12px;border-radius:10px}
+.btn.danger{color:var(--loss)}
+.link{border:1px solid var(--line);border-radius:16px;padding:12px;margin-top:10px;background:#fff}
+.link .u{font-size:13px;font-weight:600;word-break:break-all;display:flex;gap:8px;align-items:center}
+.src{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:var(--ink);border-radius:6px;padding:2px 6px;flex:none}
+.link input{margin-top:8px;font-size:15px;padding:10px 12px}
+.drop{border:2px dashed rgba(10,92,255,.35);border-radius:18px;padding:22px 14px;text-align:center;color:var(--sub);background:rgba(10,92,255,.03)}
+.drop.over{background:rgba(10,92,255,.1);border-color:var(--blue)}
+.drop b{color:var(--blue)}
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.th{position:relative;border-radius:14px;overflow:hidden;background:#fff;box-shadow:var(--shadow);aspect-ratio:3/4}
+.th img{width:100%;height:100%;object-fit:cover;display:block}
+.th .n{position:absolute;left:6px;top:6px;background:var(--ink);color:#fff;font-size:12px;font-weight:700;border-radius:8px;padding:2px 7px}
+.th .ctl{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;padding:6px;background:linear-gradient(transparent,rgba(13,18,34,.55))}
+.th .ctl button{width:32px;height:32px;border-radius:10px;border:0;background:rgba(255,255,255,.92);font-size:16px;font-weight:700;color:var(--ink)}
+.th .ctl button.x{color:var(--loss)}
+.msg{font-size:14px;border-radius:14px;padding:12px 14px;margin-top:12px;display:none}
+.msg.on{display:block}
+.msg.ok{background:rgba(31,157,107,.1);color:#126b48}
+.msg.err{background:rgba(255,59,48,.08);color:#b4241b}
+.msg.info{background:rgba(10,92,255,.08);color:#0742b8}
+.bar{height:6px;border-radius:3px;background:#e1e5ee;overflow:hidden;margin-top:10px;display:none}
+.bar.on{display:block}.bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .2s}
+.sec{margin-bottom:14px}
+.sec h3{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);margin:4px 4px 8px}
+.item{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:6px;flex:none;background:#c4cad8}
+.dot.ok{background:var(--gain)}.dot.wait{background:#f5a623}.dot.err{background:var(--loss)}.dot.run{background:var(--blue)}
+.item .t{font-weight:600;font-size:15px;word-break:break-all}
+.item .s{font-size:13px;color:var(--sub)}
+.item .e{font-size:13px;color:#b4241b;margin-top:4px;white-space:pre-wrap}
+.item .acts{display:flex;gap:6px;margin-top:8px}
+.empty{font-size:14px;color:var(--sub);padding:6px 0}
+.hide{display:none!important}
+.foot{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--sub);margin-top:8px}
+.foot button{background:none;border:0;font:inherit;color:var(--loss);font-weight:600}
+code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 5px}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>RM <span>Inbox</span></h1>
+    <div class="who" id="who"></div>
+  </header>
+
+  <!-- setup: shown until a token is saved -->
+  <section id="setup" class="card hide">
+    <h2>Connect to the studio</h2>
+    <p class="hint">Paste the fine-grained token for <code>Finance_Repo</code>. It stays in this browser only (localStorage) and is sent only to api.github.com.</p>
+    <label for="tok">Token</label>
+    <input id="tok" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…">
+    <label for="repo">Repository</label>
+    <input id="repo" value="Arcbha/Finance_Repo" autocapitalize="off" spellcheck="false">
+    <label for="branch">Branch</label>
+    <input id="branch" value="main" autocapitalize="off" spellcheck="false">
+    <div style="height:14px"></div>
+    <button class="btn primary" id="connect">Connect</button>
+    <div class="msg" id="setupMsg"></div>
+  </section>
+
+  <div id="app" class="hide">
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="refs" aria-selected="true">References</button>
+      <button role="tab" data-tab="news" aria-selected="false">News</button>
+      <button role="tab" data-tab="status" aria-selected="false">Status</button>
+    </nav>
+
+    <!-- Tab 1: references -->
+    <section data-pane="refs">
+      <div class="card">
+        <h2>Links</h2>
+        <p class="hint">X, Instagram or YouTube. One per line. Add a note on what to learn from each.</p>
+        <textarea id="links" placeholder="https://x.com/…/status/…&#10;https://www.instagram.com/reel/…"></textarea>
+        <div id="linkCards"></div>
+        <label for="tags">Tags (optional, comma-separated)</label>
+        <input id="tags" placeholder="camera push, product, chart">
+        <div style="height:14px"></div>
+        <button class="btn primary" id="sendLinks" disabled>Send to studio</button>
+        <div class="bar" id="linksBar"><i></i></div>
+        <div class="msg" id="linksMsg"></div>
+      </div>
+      <div class="card">
+        <h2>Or upload the video</h2>
+        <p class="hint">Use this when a link fails (login wall, rate limit). MP4 or MOV, up to 90 MB.</p>
+        <input id="vid" type="file" accept="video/mp4,video/quicktime,video/*">
+        <label for="vidNote">Note</label>
+        <input id="vidNote" placeholder="what I like: …">
+        <label for="vidTags">Tags</label>
+        <input id="vidTags" placeholder="optional">
+        <div style="height:14px"></div>
+        <button class="btn primary" id="sendVid" disabled>Upload video</button>
+        <div class="bar" id="vidBar"><i></i></div>
+        <div class="msg" id="vidMsg"></div>
+      </div>
+    </section>
+
+    <!-- Tab 2: news -->
+    <section data-pane="news" class="hide">
+      <div class="card">
+        <h2>Story</h2>
+        <label for="story">Story name</label>
+        <input id="story" placeholder="HDFC Bank Q2 results">
+        <label for="slug">Folder</label>
+        <input id="slug" placeholder="hdfc-bank-q2-results" autocapitalize="off" spellcheck="false">
+        <label>Screenshots</label>
+        <div class="drop" id="drop">Paste (Ctrl+V), drop here, or <b>choose images</b>
+          <input id="imgs" type="file" accept="image/*" multiple class="hide"></div>
+        <div class="thumbs" id="thumbs"></div>
+        <label for="aurl">Article URL (optional)</label>
+        <input id="aurl" type="url" placeholder="https://…" autocapitalize="off" spellcheck="false">
+        <label for="notes">Notes (optional)</label>
+        <textarea id="notes" placeholder="angle, figures to check, what to lead with…"></textarea>
+        <div style="height:14px"></div>
+        <button class="btn primary" id="sendNews" disabled>Send story</button>
+        <div class="bar" id="newsBar"><i></i></div>
+        <div class="msg" id="newsMsg"></div>
+      </div>
+    </section>
+
+    <!-- Tab 3: status -->
+    <section data-pane="status" class="hide">
+      <div class="card"><div class="row" style="justify-content:space-between">
+        <div><h2>Studio status</h2><p class="hint" id="stamp" style="margin:0">—</p></div>
+        <button class="btn ghost small" id="refresh">Refresh</button></div>
+        <div class="msg" id="statusMsg"></div>
+      </div>
+      <div id="statusBody"></div>
+    </section>
+
+    <div class="foot"><span id="repoLbl"></span><button id="forget">Forget token</button></div>
+  </div>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
