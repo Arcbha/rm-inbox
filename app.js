@@ -340,53 +340,117 @@ async function queueAct(btn, kind, stem, q) {
 $('refresh').onclick = loadStatus;
 
 // ---------- tab 4: studio reels (studio/previews/index.json, written by engine/preview.py after every render) ----------
-let reels = [], posters = {}, playing = {};
+let reels = [], posters = {}, noPoster = {}, playing = {}, loadingReel = {};
 const THEME = { launch: 'blue', ember: 'ember', noir: 'noir', paper: 'paper' };
+const picOf = slug => document.querySelector(`[data-reel="${CSS.escape(slug)}"]`);
 async function loadReels() {
   $('reelCount').textContent = 'Loading…';
   try {
     reels = JSON.parse(await fileText('studio/previews/index.json')).reels || [];
     drawReels();
-    for (const r of reels) if (!posters[r.slug]) rawBlobUrl(r.poster).then(u => { if (u) { posters[r.slug] = u; const el = document.querySelector(`[data-reel="${CSS.escape(r.slug)}"]`); if (el && !el.querySelector('video')) el.style.backgroundImage = `url(${u})` } });
+    for (const r of reels) if (!posters[r.slug] && !noPoster[r.slug]) (r.poster ? rawBlobUrl(r.poster, 'image/jpeg') : Promise.resolve(null)).then(u => {
+      const el = picOf(r.slug);
+      if (u) posters[r.slug] = u; else noPoster[r.slug] = true;
+      if (!el || el.querySelector('video')) return;            // update in place: a tap may already be loading this card
+      if (u) { el.classList.add('has-poster'); el.style.backgroundImage = `url(${u})` }
+      else if (!el.querySelector('.nopic')) el.insertAdjacentHTML('beforeend', '<span class="nopic">NO POSTER</span>');
+    });
   } catch (e) { $('reelCount').textContent = ''; msg('reelMsg', 'err', e.status === 404 ? 'No reels rendered yet.' : esc(e.message)) }
 }
+// the 9:16 poster: ▶ always on top (with or without a poster image), a tap anywhere on it plays
+function picHtml(r) {
+  const p = posters[r.slug];
+  return `<div class="pic${p ? ' has-poster' : ''}" data-reel="${esc(r.slug)}" style="${p ? `background-image:url(${p})` : ''}">
+        ${r.timing === 'estimate' ? '<span class="stamp">PREVIEW</span>' : ''}<button class="play" type="button" aria-label="Play ${esc(r.slug)}">▶</button>
+        ${noPoster[r.slug] ? '<span class="nopic">NO POSTER</span>' : ''}</div>`;
+}
+function wirePic(r) { const el = picOf(r.slug); if (el) el.onclick = () => playReel(el, r) }
 function drawReels() {
   $('reelCount').textContent = `${reels.length} reel${reels.length === 1 ? '' : 's'}`;
   const ago = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago` };
   const st = v => v === 'PASS' ? `<b class="ok">PASS</b>` : v === '—' ? '—' : `<b class="bad">${esc(v)}</b>`;
   $('reelGrid').innerHTML = reels.map(r => `<div class="ref reel">
-      <div class="pic" data-reel="${esc(r.slug)}" style="${posters[r.slug] ? `background-image:url(${posters[r.slug]})` : ''}">
-        ${r.timing === 'estimate' ? '<span class="stamp">PREVIEW</span>' : ''}<button class="play" aria-label="Play">▶</button></div>
+      ${picHtml(r)}
       <div class="body"><div class="note" style="font-size:14px">${esc(r.slug)}</div>
         <div class="tagrow" style="margin-top:2px"><span class="tag">${esc(THEME[r.theme] || r.theme)}</span><span class="tag">${r.captions === 'play' ? 'subtitle play' : 'captions'}</span>${r.moves ? `<span class="tag">${r.moves} camera</span>` : ''}</div>
         ${r.angle ? `<div class="id" style="margin-top:8px;word-break:normal">${esc(r.angle)}</div>` : ''}
         <div class="meta"><span>${r.duration}s · audit ${st(r.audit)} · critic ${st(r.critic)}</span></div>
         <div class="meta" style="margin-top:4px"><span>${ago(r.rendered)} · ${r.mb} MB</span><a href="#" data-dl="${esc(r.slug)}">Save ↓</a></div></div></div>`).join('') || '<div class="card empty">Nothing rendered yet.</div>';
-  $('reelGrid').querySelectorAll('[data-reel]').forEach(el => el.onclick = () => playReel(el, reels.find(r => r.slug === el.dataset.reel)));
+  reels.forEach(wirePic);
   $('reelGrid').querySelectorAll('[data-dl]').forEach(a => a.onclick = async ev => {
     ev.preventDefault(); const r = reels.find(x => x.slug === a.dataset.dl); a.textContent = '…';
-    const u = playing[r.slug] || await rawBlobUrl(r.mp4); if (!u) { a.textContent = 'failed'; return } playing[r.slug] = u;
+    const u = await videoUrl(r).catch(() => null); if (!u) { a.textContent = 'failed'; return }
     const l = document.createElement('a'); l.href = u; l.download = r.slug + '.mp4'; l.click(); a.textContent = 'Save ↓';
   });
 }
+// mp4 as a blob typed video/mp4 (the raw API answers application/octet-stream, which iOS Safari refuses to play), with progress
+async function videoUrl(r, onProgress) {
+  if (playing[r.slug]) return playing[r.slug];
+  const { tok, repo, branch } = cfg();
+  let res;
+  try { res = await fetch(`${API}/repos/${repo}/contents/${r.mp4}?ref=${encodeURIComponent(branch)}`, { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github.raw' } }) }
+  catch { throw new GhError(0) }
+  if (!res.ok) { let m = ''; try { m = JSON.parse(await res.text()).message } catch {} throw new GhError(res.status, m) }
+  const total = +res.headers.get('content-length') || (r.mb ? r.mb * 1048576 : 0);
+  let buf;
+  if (res.body && res.body.getReader) {
+    const rd = res.body.getReader(), parts = []; let got = 0;
+    for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; if (onProgress) onProgress(got, Math.max(total, got)) }
+    buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length }
+  } else buf = new Uint8Array(await res.arrayBuffer());
+  if (!buf.length) throw new Error('GitHub sent an empty file.');
+  return (playing[r.slug] = URL.createObjectURL(new Blob([buf], { type: 'video/mp4' })));
+}
+function reelState(el, html, kind) {
+  let s = el.querySelector('.state');
+  if (!s) { s = document.createElement('div'); el.appendChild(s) }
+  s.className = 'state' + (kind ? ' ' + kind : ''); s.innerHTML = html; return s;
+}
+function reelFail(el, r, text) {
+  if (el.querySelector('video')) { el.outerHTML = picHtml(r); wirePic(r); el = picOf(r.slug) }
+  el.classList.add('failed');
+  const s = reelState(el, `Couldn’t play ${esc(r.slug)}. ${esc(text)}<button class="retry" type="button">Retry</button>`, 'err');
+  s.querySelector('.retry').onclick = ev => { ev.stopPropagation(); playReel(el, r) };
+}
+// runs from the tap itself, so the play() below still counts as a user gesture where the browser allows it
 async function playReel(el, r) {
-  if (el.querySelector('video')) return;
-  const btn = el.querySelector('.play'); btn.textContent = '…';
-  const u = playing[r.slug] || await rawBlobUrl(r.mp4);
-  if (!u) { btn.textContent = '!'; msg('reelMsg', 'err', `Couldn’t load ${esc(r.slug)}.`); return }
-  playing[r.slug] = u;
-  el.innerHTML = `<video src="${u}" controls autoplay playsinline loop></video>`;
+  if (!r || el.querySelector('video') || loadingReel[r.slug]) return;
+  loadingReel[r.slug] = true;
+  el.classList.remove('failed');
+  const btn = el.querySelector('.play'); btn.disabled = true; btn.textContent = '…';
+  const mb = n => (n / 1048576).toFixed(1);
+  reelState(el, `Loading${r.mb ? ' ' + esc(r.mb) + ' MB' : ''}…`);
+  let u;
+  try { u = await videoUrl(r, (got, total) => reelState(el, `Loading ${mb(got)} of ${mb(total)} MB…`)) }
+  catch (e) { btn.disabled = false; btn.textContent = '▶'; reelFail(el, r, e.message); return }
+  finally { loadingReel[r.slug] = false }
+  const v = document.createElement('video');
+  v.controls = true; v.loop = true; v.playsInline = true; v.preload = 'metadata';
+  v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); v.setAttribute('preload', 'metadata');
+  if (posters[r.slug]) v.poster = posters[r.slug];
+  v.onerror = () => { URL.revokeObjectURL(u); delete playing[r.slug]; reelFail(el, r, 'This browser couldn’t decode the video.') };
+  v.src = u;
+  el.innerHTML = ''; el.classList.add('on'); el.appendChild(v);
+  const p = v.play();
+  if (p && p.catch) p.catch(err => {           // the gesture expired while the file downloaded (iOS): one more tap starts it
+    if (!err || err.name !== 'NotAllowedError' || el.querySelector('.play')) return;
+    const b = document.createElement('button'); b.className = 'play'; b.type = 'button'; b.textContent = '▶'; b.setAttribute('aria-label', 'Play');
+    b.onclick = ev => { ev.stopPropagation(); b.remove(); v.play().catch(() => {}) };
+    el.appendChild(b);
+  });
 }
 $('reelRefresh').onclick = loadReels;
 
 // ---------- tab 3: library ----------
 let lib = [], libTag = '', thumbs = {};
 const SRCNAME = { x: 'X', ig: 'IG', yt: 'YT', upload: 'FILE' };
-async function rawBlobUrl(path) {               // private repo: fetch the image with the token, show it as a blob URL
+async function rawBlobUrl(path, type) {         // private repo: fetch the image with the token, show it as a blob URL
   const { tok, repo, branch } = cfg();
-  const r = await fetch(`${API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`, { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github.raw' } });
-  if (!r.ok) return null;
-  return URL.createObjectURL(await r.blob());
+  try {
+    const r = await fetch(`${API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`, { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github.raw' } });
+    if (!r.ok) return null;
+    return URL.createObjectURL(type ? new Blob([await r.arrayBuffer()], { type }) : await r.blob());
+  } catch { return null }
 }
 const indexText = cards => '{"version":1,\n"cards":[\n' + cards.map(c => '  ' + JSON.stringify(c)).join(',\n') + '\n]}\n';
 async function loadLibrary() {
