@@ -284,12 +284,12 @@ async function loadStatus() {
     const cards = new Set(under('references/cards/').filter(x => x.includes('/')).map(x => x.split('/')[0]));
     const cardMd = new Set(under('references/cards/').filter(x => x.endsWith('/card.md')).map(x => x.split('/')[0]));
     let index = [];
-    if (paths.includes('references/index.json')) { try { const j = JSON.parse(await fileText('references/index.json')); index = Array.isArray(j) ? j.map(e => e.id) : Object.keys(j.cards || j) } catch {} }
+    if (paths.includes('references/index.json')) { try { const j = JSON.parse(await fileText('references/index.json')); index = (Array.isArray(j) ? j : j.cards || []).filter(e => e.studied).map(e => e.id) } catch {} }
     const studied = new Set(index);
     const iItems = inbox.sort().reverse().map(id => studied.has(id) ? item('ok', esc(id), 'Studied — card in references/cards')
       : cards.has(id) ? item('wait', esc(id), 'Measured (sheet, clip, metrics) · waiting for /study')
       : item('wait', esc(id), 'Downloaded · waiting for /study'));
-    const cItems = [...cards].sort().map(id => item(studied.has(id) ? 'ok' : 'wait', esc(id), studied.has(id) ? 'In index.json' : cardMd.has(id) ? 'Card drafted · techniques pending' : 'Sheet only · techniques pending'));
+    const cItems = [...cards].sort().map(id => item(studied.has(id) ? 'ok' : 'wait', esc(id), studied.has(id) ? 'Studied' : cardMd.has(id) ? 'Measured · techniques wait for /study' : 'Measuring…'));
 
     // news + reels
     const reels = new Set(under('studio/reels/').filter(x => x.includes('/')).map(x => x.split('/')[0]));
