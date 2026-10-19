@@ -303,7 +303,9 @@ async function loadStatus() {
 
     // action
     let aHtml;
-    if (runs.error) aHtml = item('err', 'Inbox Action', runs.error.status === 404 ? 'The inbox workflow isn’t on this branch yet.' : esc(runs.error.message));
+    if (runs.error) aHtml = runs.error.status === 403
+      ? item('wait', 'Inbox Action', 'Downloads still work, but this token can’t see Action runs. To show them: GitHub → Settings → Developer settings → Fine-grained tokens → rm-inbox → Edit → Repository permissions → Actions: Read-only → Update. The token text stays the same.')
+      : item('err', 'Inbox Action', runs.error.status === 404 ? 'The inbox workflow isn’t on this branch yet.' : esc(runs.error.message));
     else if (!run) aHtml = item('wait', 'Inbox Action', 'No runs yet on this branch.');
     else {
       const word = run.status !== 'completed' ? ['run', run.status === 'queued' ? 'Queued' : 'Running'] : run.conclusion === 'success' ? ['ok', 'Succeeded'] : run.conclusion === 'cancelled' ? ['wait', 'Cancelled'] : ['err', 'Failed — open the run for details'];
