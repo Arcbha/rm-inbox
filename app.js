@@ -67,7 +67,7 @@ function postBlob(b64, onProgress) {
 
 // ---------- one commit for many files (Git Data API: blobs → tree → commit → ref) ----------
 // files: [{path, b64}] to add, [{path, del:true}] to remove
-async function commitFiles(files, message, onProgress) {
+async function commitFiles(files, message, onProgress, rebuild) {
   const { repo, branch } = cfg();
   const total = files.reduce((n, f) => n + (f.b64 ? f.b64.length : 0), 0) || 1;
   let done = 0;
@@ -82,7 +82,9 @@ async function commitFiles(files, message, onProgress) {
     try {
       const ref = await api(`/repos/${repo}/git/ref/heads/${encodeURIComponent(branch)}`);
       const head = await api(`/repos/${repo}/git/commits/${ref.object.sha}`);
-      const tree = await api(`/repos/${repo}/git/trees`, { method: 'POST', body: JSON.stringify({ base_tree: head.tree.sha, tree: entries }) });
+      const extra = [];
+      if (rebuild) for (const f of await rebuild(ref.object.sha)) extra.push({ path: f.path, mode: '100644', type: 'blob', sha: await postBlob(f.b64) });
+      const tree = await api(`/repos/${repo}/git/trees`, { method: 'POST', body: JSON.stringify({ base_tree: head.tree.sha, tree: [...entries, ...extra] }) });
       const commit = await api(`/repos/${repo}/git/commits`, { method: 'POST', body: JSON.stringify({ message, tree: tree.sha, parents: [ref.object.sha] }) });
       await api(`/repos/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha, force: false }) });
       onProgress && onProgress(1);
@@ -126,6 +128,7 @@ function showTab(t) {
   store.set(K.tab, t);
   clearInterval(statusTimer);
   if (t === 'status') { loadStatus(); statusTimer = setInterval(loadStatus, 15000) }
+  if (t === 'library') loadLibrary();
 }
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
@@ -334,5 +337,66 @@ async function queueAct(btn, kind, stem, q) {
   catch (e) { msg('statusMsg', 'err', esc(e.message)); btn.disabled = false }
 }
 $('refresh').onclick = loadStatus;
+
+// ---------- tab 3: library ----------
+let lib = [], libTag = '', thumbs = {};
+const SRCNAME = { x: 'X', ig: 'IG', yt: 'YT', upload: 'FILE' };
+async function rawBlobUrl(path) {               // private repo: fetch the image with the token, show it as a blob URL
+  const { tok, repo, branch } = cfg();
+  const r = await fetch(`${API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`, { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github.raw' } });
+  if (!r.ok) return null;
+  return URL.createObjectURL(await r.blob());
+}
+const indexText = cards => '{"version":1,\n"cards":[\n' + cards.map(c => '  ' + JSON.stringify(c)).join(',\n') + '\n]}\n';
+async function loadLibrary() {
+  const { repo, branch } = cfg();
+  $('libCount').textContent = 'Loading…';
+  try {
+    const j = JSON.parse(await fileText('references/index.json'));
+    lib = (Array.isArray(j) ? j : j.cards || []).slice().sort((a, b) => (a.id === 'golden-reel-v3' ? -1 : b.id === 'golden-reel-v3' ? 1 : b.id.localeCompare(a.id)));
+    drawLibrary();
+    for (const c of lib) if (!thumbs[c.id]) rawBlobUrl(`references/cards/${c.id}/thumb.jpg`).then(u => { if (u) { thumbs[c.id] = u; const el = document.querySelector(`[data-pic="${CSS.escape(c.id)}"]`); if (el) el.style.backgroundImage = `url(${u})` } });
+  } catch (e) { $('libCount').textContent = ''; msg('libMsg', 'err', e.status === 404 ? 'No library yet — add a reference first.' : esc(e.message)) }
+}
+function drawLibrary() {
+  const q = $('libQ').value.trim().toLowerCase();
+  const tagsOf = c => [...new Set([...(c.tags || []), ...(c.tags_studier || [])])];
+  const all = [...new Set(lib.flatMap(tagsOf))].sort();
+  $('libTags').innerHTML = all.map(t => `<button class="tag${t === libTag ? ' on' : ''}" data-t="${esc(t)}">${esc(t)}</button>`).join('');
+  $('libTags').querySelectorAll('.tag').forEach(b => b.onclick = () => { libTag = libTag === b.dataset.t ? '' : b.dataset.t; drawLibrary() });
+  const shown = lib.filter(c => (!libTag || tagsOf(c).includes(libTag)) &&
+    (!q || [c.id, c.note, ...(c.tags || []), ...(c.tags_studier || []), ...(c.techniques || [])].join(' ').toLowerCase().includes(q)));
+  $('libCount').textContent = `${lib.length} reference${lib.length === 1 ? '' : 's'}${shown.length !== lib.length ? ` · ${shown.length} shown` : ''}`;
+  $('libGrid').innerHTML = shown.map(c => {
+    const gold = c.id === 'golden-reel-v3', src = gold ? 'gold' : (c.id.split('-')[0] || 'web');
+    const link = c.src && /^https?:/.test(c.src) ? `<a href="${esc(c.src)}" target="_blank" rel="noopener">Open original ↗</a>` : '<span>uploaded file</span>';
+    return `<div class="ref"><div class="pic" data-pic="${esc(c.id)}" style="${thumbs[c.id] ? `background-image:url(${thumbs[c.id]})` : ''}">
+        ${gold ? '<span class="gold">HOUSE REFERENCE</span>' : `<span class="src">${esc(SRCNAME[src] || src.toUpperCase())}</span><button class="del" data-del="${esc(c.id)}" aria-label="Delete">🗑</button>`}</div>
+      <div class="body"><div class="id">${esc(c.id)} · ${c.dur ? c.dur + 's' : ''} ${esc(c.aspect || '')}</div>
+        <div class="note">${esc(c.note || (gold ? 'The golden reel' : 'No note'))}</div>
+        <div class="tagrow" style="margin-top:4px">${tagsOf(c).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
+        ${(c.techniques || []).length ? `<ul class="tech">${c.techniques.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : `<div class="id" style="margin-top:6px">${c.studied ? '' : 'Techniques pending — run /study'}</div>`}
+        <div class="meta"><span>pan ${c.pan ?? '–'}% · motion ${c.motion ?? '–'} · cuts ${c.cuts ?? '–'}</span>${link}</div></div></div>`;
+  }).join('') || '<div class="card empty">Nothing matches.</div>';
+  $('libGrid').querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteRef(b, b.dataset.del));
+}
+async function deleteRef(btn, id) {
+  if (!confirm(`Delete ${id} from the library? (video, card and index entry)`)) return;
+  btn.disabled = true;
+  const { repo, branch } = cfg();
+  try {
+    const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+    const paths = tree.tree.filter(t => t.type === 'blob' && (t.path.startsWith(`references/cards/${id}/`) || t.path === `references/inbox/${id}.mp4` || t.path === `references/inbox/${id}.json`)).map(t => ({ path: t.path, del: true }));
+    await commitFiles(paths, `inbox: delete reference ${id}`, null, async head => {
+      const r = await api(`/repos/${repo}/contents/references/index.json?ref=${head}`);   // fresh index on every attempt (the Action may have added one)
+      const j = JSON.parse(utf8b64(r.content)), cards = (Array.isArray(j) ? j : j.cards || []).filter(c => c.id !== id);
+      return [{ path: 'references/index.json', b64: b64utf8(indexText(cards)) }];
+    });
+    lib = lib.filter(c => c.id !== id); drawLibrary();
+    msg('libMsg', 'ok', `Deleted ${esc(id)}.`);
+  } catch (e) { msg('libMsg', 'err', esc(e.message)); btn.disabled = false }
+}
+$('libQ').oninput = drawLibrary;
+$('libAdd').onclick = () => showTab('refs');
 
 boot();
