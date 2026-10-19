@@ -30,7 +30,7 @@ function plain(status, text) {
   if (status === 0) return 'No connection to GitHub. Check your network and try again.';
   if (status === 401) return 'GitHub rejected the token. It may have expired or been revoked. Tap “Forget token” and paste a new one.';
   if (status === 403 && t.includes('rate limit')) return 'GitHub’s rate limit was hit. Wait a few minutes and try again.';
-  if (status === 403) return 'The token is missing a permission. It needs Contents: Read and write and Actions: Read-only on Finance_Repo.';
+  if (status === 403) return 'The token is missing a permission. It needs Contents: Read and write and Actions: Read-only on Finance_Repo (github.com → Settings → Developer settings → Fine-grained tokens → this token → Repository access must include Finance_Repo).' + (text ? ` GitHub said: “${text}”` : '');
   if (status === 404) return 'Not found. Check the repository and branch names, and that the token includes Finance_Repo.';
   if (status === 409) return 'The repository is empty or the branch is missing.';
   if (status === 413 || t.includes('too large')) return 'The file is too large for GitHub (limit about 100 MB).';
@@ -129,6 +129,7 @@ function showTab(t) {
   clearInterval(statusTimer);
   if (t === 'status') { loadStatus(); statusTimer = setInterval(loadStatus, 15000) }
   if (t === 'library') loadLibrary();
+  if (t === 'studio') loadReels();
 }
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
@@ -337,6 +338,46 @@ async function queueAct(btn, kind, stem, q) {
   catch (e) { msg('statusMsg', 'err', esc(e.message)); btn.disabled = false }
 }
 $('refresh').onclick = loadStatus;
+
+// ---------- tab 4: studio reels (studio/previews/index.json, written by engine/preview.py after every render) ----------
+let reels = [], posters = {}, playing = {};
+const THEME = { launch: 'blue', ember: 'ember', noir: 'noir', paper: 'paper' };
+async function loadReels() {
+  $('reelCount').textContent = 'Loading…';
+  try {
+    reels = JSON.parse(await fileText('studio/previews/index.json')).reels || [];
+    drawReels();
+    for (const r of reels) if (!posters[r.slug]) rawBlobUrl(r.poster).then(u => { if (u) { posters[r.slug] = u; const el = document.querySelector(`[data-reel="${CSS.escape(r.slug)}"]`); if (el && !el.querySelector('video')) el.style.backgroundImage = `url(${u})` } });
+  } catch (e) { $('reelCount').textContent = ''; msg('reelMsg', 'err', e.status === 404 ? 'No reels rendered yet.' : esc(e.message)) }
+}
+function drawReels() {
+  $('reelCount').textContent = `${reels.length} reel${reels.length === 1 ? '' : 's'}`;
+  const ago = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago` };
+  const st = v => v === 'PASS' ? `<b class="ok">PASS</b>` : v === '—' ? '—' : `<b class="bad">${esc(v)}</b>`;
+  $('reelGrid').innerHTML = reels.map(r => `<div class="ref reel">
+      <div class="pic" data-reel="${esc(r.slug)}" style="${posters[r.slug] ? `background-image:url(${posters[r.slug]})` : ''}">
+        ${r.timing === 'estimate' ? '<span class="stamp">PREVIEW</span>' : ''}<button class="play" aria-label="Play">▶</button></div>
+      <div class="body"><div class="note" style="font-size:14px">${esc(r.slug)}</div>
+        <div class="tagrow" style="margin-top:2px"><span class="tag">${esc(THEME[r.theme] || r.theme)}</span><span class="tag">${r.captions === 'play' ? 'subtitle play' : 'captions'}</span>${r.moves ? `<span class="tag">${r.moves} camera</span>` : ''}</div>
+        ${r.angle ? `<div class="id" style="margin-top:8px;word-break:normal">${esc(r.angle)}</div>` : ''}
+        <div class="meta"><span>${r.duration}s · audit ${st(r.audit)} · critic ${st(r.critic)}</span></div>
+        <div class="meta" style="margin-top:4px"><span>${ago(r.rendered)} · ${r.mb} MB</span><a href="#" data-dl="${esc(r.slug)}">Save ↓</a></div></div></div>`).join('') || '<div class="card empty">Nothing rendered yet.</div>';
+  $('reelGrid').querySelectorAll('[data-reel]').forEach(el => el.onclick = () => playReel(el, reels.find(r => r.slug === el.dataset.reel)));
+  $('reelGrid').querySelectorAll('[data-dl]').forEach(a => a.onclick = async ev => {
+    ev.preventDefault(); const r = reels.find(x => x.slug === a.dataset.dl); a.textContent = '…';
+    const u = playing[r.slug] || await rawBlobUrl(r.mp4); if (!u) { a.textContent = 'failed'; return } playing[r.slug] = u;
+    const l = document.createElement('a'); l.href = u; l.download = r.slug + '.mp4'; l.click(); a.textContent = 'Save ↓';
+  });
+}
+async function playReel(el, r) {
+  if (el.querySelector('video')) return;
+  const btn = el.querySelector('.play'); btn.textContent = '…';
+  const u = playing[r.slug] || await rawBlobUrl(r.mp4);
+  if (!u) { btn.textContent = '!'; msg('reelMsg', 'err', `Couldn’t load ${esc(r.slug)}.`); return }
+  playing[r.slug] = u;
+  el.innerHTML = `<video src="${u}" controls autoplay playsinline loop></video>`;
+}
+$('reelRefresh').onclick = loadReels;
 
 // ---------- tab 3: library ----------
 let lib = [], libTag = '', thumbs = {};

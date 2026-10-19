@@ -19,9 +19,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:8px
 h1{font-size:22px;font-weight:600;letter-spacing:-.02em}
 h1 span{color:var(--blue)}
 .who{font-size:13px;color:var(--sub);text-align:right}
-.tabs{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:4px;border-radius:16px;
+.tabs{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1.35fr 1fr 1fr 1fr 1fr;gap:2px;padding:4px;border-radius:16px;
   background:rgba(255,255,255,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:var(--shadow);margin-bottom:16px}
-.tabs button{border:0;background:none;font:inherit;font-weight:600;font-size:14px;color:var(--sub);padding:11px 0;border-radius:12px}
+.tabs button{border:0;background:none;font:inherit;font-weight:600;font-size:13px;letter-spacing:-.01em;color:var(--sub);padding:11px 0;border-radius:12px;white-space:nowrap}
 .tabs button[aria-selected=true]{background:var(--ink);color:#fff}
 .card{background:var(--surf);border-radius:22px;box-shadow:var(--shadow);padding:18px;margin-bottom:14px}
 .card h2{font-size:17px;font-weight:600;letter-spacing:-.01em;margin-bottom:4px}
@@ -94,6 +94,13 @@ input[type=file]::file-selector-button{font:inherit;font-weight:600;color:var(--
 .ref .tech li{margin:2px 0}
 .ref .meta{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--sub);margin-top:10px}
 .ref .meta a{color:var(--blue);font-weight:600;text-decoration:none}
+.reel .pic{position:relative;aspect-ratio:9/16;background:#0d1222 center/cover no-repeat;cursor:pointer}
+.reel .pic video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+.reel .pic .play{position:absolute;left:50%;top:50%;width:68px;height:68px;margin:-34px 0 0 -34px;border-radius:50%;border:0;background:rgba(255,255,255,.92);font-size:24px;color:var(--ink);box-shadow:0 10px 24px rgba(0,0,0,.3)}
+.reel .pic .stamp{position:absolute;left:10px;top:10px;font-size:11px;font-weight:700;letter-spacing:.06em;background:rgba(13,18,34,.75);color:#fff;border-radius:6px;padding:3px 7px}
+.reels{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (min-width:720px){.reels{grid-template-columns:1fr 1fr 1fr}}
+.ok{color:var(--gain)}.bad{color:var(--loss)}
 code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 5px}
 </style>
 </head>
@@ -124,6 +131,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <button role="tab" data-tab="refs" aria-selected="true">References</button>
       <button role="tab" data-tab="news" aria-selected="false">News</button>
       <button role="tab" data-tab="library" aria-selected="false">Library</button>
+      <button role="tab" data-tab="studio" aria-selected="false">Studio</button>
       <button role="tab" data-tab="status" aria-selected="false">Status</button>
     </nav>
 
@@ -192,7 +200,18 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="lib" id="libGrid"></div>
     </section>
 
-    <!-- Tab 4: status -->
+    <!-- Tab 4: studio — reels the studio has rendered -->
+    <section data-pane="studio" class="hide">
+      <div class="card"><div class="row" style="justify-content:space-between">
+        <div><h2>Studio reels</h2><p class="hint" id="reelCount" style="margin:0">—</p></div>
+        <button class="btn ghost small" id="reelRefresh">Refresh</button></div>
+        <p class="hint" style="margin:10px 0 0">Phone-size copies of every render. “Preview” = estimated timing, no voice yet.</p>
+        <div class="msg" id="reelMsg"></div>
+      </div>
+      <div class="reels" id="reelGrid"></div>
+    </section>
+
+    <!-- Tab 5: status -->
     <section data-pane="status" class="hide">
       <div class="card"><div class="row" style="justify-content:space-between">
         <div><h2>Studio status</h2><p class="hint" id="stamp" style="margin:0">—</p></div>
