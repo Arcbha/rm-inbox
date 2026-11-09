@@ -443,7 +443,7 @@ function drawReels() {
   $('reelGrid').innerHTML = reels.map(r => `<div class="ref reel">
       ${picHtml(r)}
       <div class="body"><div class="note" style="font-size:14px">${esc(r.slug)}</div>
-        <div class="tagrow" style="margin-top:2px"><span class="tag">${esc(THEME[r.theme] || r.theme)}</span><span class="tag">${r.captions === 'play' ? 'subtitle play' : 'captions'}</span>${r.moves ? `<span class="tag">${r.moves} camera</span>` : ''}</div>
+        <div class="tagrow" style="margin-top:2px"><span class="tag">${esc(THEME[r.theme] || r.theme)}</span><span class="tag">${r.captions === 'play' ? 'subtitle play' : 'captions'}</span>${r.section ? `<span class="tag" style="background:var(--blue);color:#fff;box-shadow:none">${esc(r.section)}</span>` : ''}${r.moves ? `<span class="tag">${r.moves} camera</span>` : ''}</div>
         ${r.angle ? `<div class="id" style="margin-top:8px;word-break:normal">${esc(r.angle)}</div>` : ''}
         <div class="meta"><span>${r.duration}s · audit ${st(r.audit)} · critic ${st(r.critic)}</span></div>
         <div class="meta" style="margin-top:4px"><span>${ago(r.rendered)} · ${r.mb} MB</span><a href="#" data-dl="${esc(r.slug)}">Save ↓</a></div></div></div>`).join('') || '<div class="card empty">Nothing rendered yet.</div>';
