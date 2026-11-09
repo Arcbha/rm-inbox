@@ -20,6 +20,15 @@ const b64utf8 = s => btoa(unescape(encodeURIComponent(s)));
 const utf8b64 = s => decodeURIComponent(escape(atob(s.replace(/\n/g, ''))));
 
 function msg(id, kind, html) { const m = $(id); m.className = 'msg on ' + kind; m.innerHTML = html }
+// tap twice to confirm: native confirm() pop-ups are silently blocked in some phone browsers and in-app web views,
+// which made Remove look dead (editor, 2026-11-09). First tap arms the button for 4 s, second tap runs.
+function armTap(btn, label) {
+  if (btn.dataset.armed === '1') { clearTimeout(btn._t); return true }
+  const old = btn.innerHTML; btn.dataset.armed = '1'; btn.innerHTML = label; btn.classList.add('armed');
+  btn._t = setTimeout(() => { btn.dataset.armed = ''; btn.innerHTML = old; btn.classList.remove('armed') }, 4000);
+  return false;
+}
+const show = id => { const m = $(id); if (m) m.scrollIntoView({ block: 'center' }) };
 function clearMsg(id) { $(id).className = 'msg' }
 function bar(id, frac) { const b = $(id); if (frac == null) { b.className = 'bar'; return } b.className = 'bar on'; b.firstChild.style.width = Math.round(frac * 100) + '%' }
 
@@ -118,7 +127,7 @@ $('connect').onclick = async () => {
     $('tok').value = ''; clearMsg('setupMsg'); boot(); applyShared();
   } catch (e) { store.del(K.tok); msg('setupMsg', 'err', esc(e.message)) }
 };
-$('forget').onclick = () => { if (confirm('Forget the token on this device?')) { store.del(K.tok); boot() } };
+$('forget').onclick = () => { if (armTap($('forget'), 'Tap again to forget')) { store.del(K.tok); boot() } };
 
 // ---------- tabs ----------
 let statusTimer = null;
@@ -276,7 +285,7 @@ $('sendNews').onclick = async () => {
   try {
     const { repo, branch } = cfg();
     const existing = await api(`/repos/${repo}/contents/news/inbox/${slug}?ref=${encodeURIComponent(branch)}`).catch(e => { if (e.status === 404) return null; throw e });
-    if (existing && !confirm(`news/inbox/${slug} already exists. Add these as a new set inside it (files are replaced)?`)) { btn.disabled = false; return }
+    if (existing && !armTap(btn, 'Tap again to replace')) { msg('newsMsg', 'info', `<code>news/inbox/${esc(slug)}</code> already exists. Tap again to save these screenshots into it (same-named files are replaced).`); btn.disabled = false; return }
     const names = shots.map((_, i) => String(i + 1).padStart(2, '0') + '.jpg');
     const files = [];
     for (let i = 0; i < shots.length; i++) files.push({ path: `news/inbox/${slug}/${names[i]}`, b64: await blobB64(shots[i].blob) });
@@ -296,9 +305,10 @@ const tsFromStem = stem => { const m = stem.match(/^(\d{4}-\d\d-\d\d)T(\d\d)-(\d
 function item(dot, title, sub, extra = '') { return `<div class="item"><span class="dot ${dot}"></span><div style="min-width:0;flex:1"><div class="t">${title}</div><div class="s">${sub}</div>${extra}</div></div>` }
 function section(title, items, emptyText) { return `<div class="card sec"><h3><span>${title}</span><span>${items.length || ''}</span></h3>${items.join('') || `<div class="empty">${emptyText}</div>`}</div>` }
 async function fileText(path) { const { repo, branch } = cfg(); const r = await api(`/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`); return utf8b64(r.content) }
-let loading = false;
-async function loadStatus() {
-  if (loading) return; loading = true;
+let loading = false, holdStatus = 0;
+const qNote = {};                                       // stem → [kind, html]: a result shown under its own item
+async function loadStatus(force) {
+  if (loading || (!force && Date.now() < holdStatus)) return; loading = true;
   const { repo, branch } = cfg();
   try {
     const [tree, runs] = await Promise.all([
@@ -321,8 +331,9 @@ async function loadStatus() {
       const n = (meta.files || []).length;
       const title = esc(meta.url || (n > 1 ? `${meta.kind || 'carousel'} · ${n} files` : (meta.names || [])[0] || meta.name || s)), when = tsFromStem(s) ? ago(tsFromStem(s)) : '';
       const note = meta.note ? ' · “' + esc(meta.note) + '”' : '';
-      if (errs[s]) return item('err', title, `Failed · ${when}${note}`, `<div class="e">${esc(errs[s].trim())}</div><div class="acts"><button class="btn ghost small" data-retry="${esc(s)}">Retry</button><button class="btn ghost small danger" data-dismiss="${esc(s)}">Remove</button></div>`);
-      return item(running ? 'run' : 'wait', title, `${running ? 'Downloading now' : 'Waiting for the Action'} · ${when}${note}`);
+      const qn = qNote[s] ? `<div class="msg on ${qNote[s][0]}" style="margin-top:8px">${qNote[s][1]}</div>` : '';
+      if (errs[s]) return item('err', title, `Failed · ${when}${note}`, `<div class="e">${esc(errs[s].trim())}</div><div class="acts"><button class="btn ghost small" data-retry="${esc(s)}">Retry</button><button class="btn ghost small danger" data-dismiss="${esc(s)}">Remove</button></div>${qn}`);
+      return item(running ? 'run' : 'wait', title, `${running ? 'Downloading now' : 'Waiting for the Action'} · ${when}${note}`, qn);
     }));
 
     // inbox + cards
@@ -376,15 +387,26 @@ async function loadStatus() {
   loading = false;
 }
 async function queueAct(btn, kind, stem, q, qMeta = {}) {
-  if (kind === 'dismiss' && !confirm('Remove this item from the queue?')) return;
-  btn.disabled = true;
+  holdStatus = Date.now() + 5000;
+  if (kind === 'dismiss' && !armTap(btn, 'Tap again to remove')) return;
+  holdStatus = Date.now() + 60000;                       // no refresh while GitHub works
+  btn.disabled = true; btn.textContent = kind === 'retry' ? 'Retrying…' : 'Removing…';
   const own = new Set([...((qMeta[stem] || {}).files || []), (qMeta[stem] || {}).file].filter(Boolean));   // carousel uploads: <stem>-01.jpg …
   const files = kind === 'retry' ? [{ path: `references/queue/${stem}.error.txt`, del: true }]
     : q.filter(x => x.startsWith(stem + '.') || own.has(x)).map(x => ({ path: `references/queue/${x}`, del: true }));
-  try { await commitFiles(files, `inbox: ${kind} ${stem}`); msg('statusMsg', 'ok', kind === 'retry' ? 'Retrying — the Action starts in a few seconds.' : 'Removed.'); loadStatus() }
-  catch (e) { msg('statusMsg', 'err', esc(e.message)); btn.disabled = false }
+  let top;
+  try {
+    await commitFiles(files, `inbox: ${kind} ${stem}`);
+    qNote[stem] = ['ok', kind === 'retry' ? 'Retrying — the Action starts in a few seconds.' : 'Removed.'];
+    top = ['ok', kind === 'retry' ? 'Retrying — the Action starts in a few seconds.' : 'Removed from the queue.'];
+  } catch (e) {
+    qNote[stem] = ['err', esc(e.message)];
+    top = ['err', esc(e.message)];
+  }
+  holdStatus = 0; await loadStatus(true);               // a refresh clears the top message, so set it after
+  msg('statusMsg', ...top); show('statusMsg');
 }
-$('refresh').onclick = loadStatus;
+$('refresh').onclick = () => loadStatus(true);
 
 // ---------- tab 4: studio reels (studio/previews/index.json, written by engine/preview.py after every render) ----------
 let reels = [], posters = {}, noPoster = {}, playing = {}, loadingReel = {};
@@ -608,8 +630,8 @@ function drawLibrary() {
   $('libGrid').querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteRef(b, b.dataset.del));
 }
 async function deleteRef(btn, id) {
-  if (!confirm(`Delete ${id} from the library? (its video or slides, card and index entry)`)) return;
-  btn.disabled = true;
+  if (!armTap(btn, 'Delete?')) { msg('libMsg', 'info', `Tap <b>Delete?</b> again to delete ${esc(id)} (its video or slides, card and index entry).`); return }
+  btn.disabled = true; msg('libMsg', 'info', `Deleting ${esc(id)}…`); show('libMsg');
   const { repo, branch } = cfg();
   try {
     const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
@@ -620,8 +642,8 @@ async function deleteRef(btn, id) {
       return [{ path: 'references/index.json', b64: b64utf8(indexText(cards)) }];
     });
     lib = lib.filter(c => c.id !== id); drawLibrary();
-    msg('libMsg', 'ok', `Deleted ${esc(id)}.`);
-  } catch (e) { msg('libMsg', 'err', esc(e.message)); btn.disabled = false }
+    msg('libMsg', 'ok', `Deleted ${esc(id)}.`); show('libMsg');
+  } catch (e) { msg('libMsg', 'err', esc(e.message)); btn.disabled = false; show('libMsg') }
 }
 $('libQ').oninput = drawLibrary;
 $('libAdd').onclick = () => showTab('refs');
