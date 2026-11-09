@@ -393,7 +393,9 @@ const picOf = slug => document.querySelector(`[data-reel="${CSS.escape(slug)}"]`
 async function loadReels() {
   $('reelCount').textContent = 'Loading…';
   try {
-    reels = JSON.parse(await fileText('studio/previews/index.json')).reels || [];
+    const pj = JSON.parse(await fileText('studio/previews/index.json'));
+    reels = pj.reels || []; cars = pj.carousels || [];
+    drawCarousels();
     drawReels();
     for (const r of reels) if (!posters[r.slug] && !noPoster[r.slug]) (r.poster ? rawBlobUrl(r.poster, 'image/jpeg') : Promise.resolve(null)).then(u => {
       const el = picOf(r.slug);
@@ -487,6 +489,75 @@ async function playReel(el, r) {
   });
 }
 $('reelRefresh').onclick = loadReels;
+
+// ---------- carousels (studio/previews/index.json → carousels, written by engine/carousel.py) ----------
+let cars = [], carImgs = {};
+async function rawFile(path, type) {               // a repo file as a typed Blob (private repo → token)
+  const { tok, repo, branch } = cfg();
+  let r;
+  try { r = await fetch(`${API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`, { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github.raw' } }) }
+  catch { throw new GhError(0) }
+  if (!r.ok) { let m = ''; try { m = JSON.parse(await r.text()).message } catch {} throw new GhError(r.status, m) }
+  return new Blob([await r.arrayBuffer()], { type });
+}
+function drawCarousels() {
+  $('carWrap').classList.toggle('hide', !cars.length);
+  $('carCount').textContent = cars.length || '';
+  const st = v => v === 'PASS' ? '<b class="ok">PASS</b>' : `<b class="bad">${esc(v || '—')}</b>`;
+  $('carGrid').innerHTML = cars.map((c, ci) => `<div class="ref car">
+      <div class="strip" data-car="${ci}">${c.slides.map((s, i) => `<div class="sl" data-ci="${ci}" data-si="${i}">${s.type === 'video' ? '<span class="vtag">VIDEO</span><button class="play" type="button" aria-label="Play">▶</button>' : ''}</div>`).join('')}</div>
+      <div class="dots" data-dots="${ci}">${c.slides.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>
+      <div class="body"><div class="note" style="font-size:15px">${esc(c.title || c.slug)}</div>
+        <div class="tagrow" style="margin-top:2px"><span class="tag">${c.slides.length} slides</span><span class="tag">${esc(c.theme || '')}</span></div>
+        <div class="meta"><span>${esc(c.slug)} · audit ${st(c.audit)}</span></div>
+        <div class="acts"><button class="btn primary small" data-share="${ci}">Share / Save</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
+        <div class="msg" id="carMsg${ci}"></div></div></div>`).join('');
+  cars.forEach((c, ci) => c.slides.forEach((s, i) => {
+    const key = c.slug + '/' + i, el = document.querySelector(`.sl[data-ci="${ci}"][data-si="${i}"]`);
+    const show = u => { if (el) el.style.backgroundImage = `url(${u})` };
+    if (carImgs[key]) show(carImgs[key]);
+    else rawFile(s.type === 'video' ? s.poster : s.src, 'image/jpeg').then(b => show(carImgs[key] = URL.createObjectURL(b))).catch(() => {});
+    if (s.type === 'video' && el) el.querySelector('.play').onclick = async ev => {
+      ev.stopPropagation(); const btn = ev.currentTarget; btn.textContent = '…'; btn.disabled = true;
+      try {
+        const u = URL.createObjectURL(await rawFile(s.src, 'video/mp4'));
+        const v = document.createElement('video'); v.src = u; v.controls = true; v.loop = true; v.playsInline = true; v.setAttribute('playsinline', '');
+        btn.remove(); el.appendChild(v); v.play().catch(() => {});
+      } catch (e) { btn.textContent = '▶'; btn.disabled = false; msg('carMsg' + ci, 'err', esc(e.message)) }
+    };
+  }));
+  document.querySelectorAll('.car .strip').forEach(sp => sp.onscroll = () => {
+    const i = Math.round(sp.scrollLeft / sp.clientWidth);
+    document.querySelectorAll(`[data-dots="${sp.dataset.car}"] i`).forEach((d, k) => d.classList.toggle('on', k === i));
+  });
+  document.querySelectorAll('[data-cap]').forEach(b => b.onclick = async () => {
+    const c = cars[+b.dataset.cap];
+    try { await navigator.clipboard.writeText(c.caption); msg('carMsg' + b.dataset.cap, 'ok', 'Caption copied.') }
+    catch { msg('carMsg' + b.dataset.cap, 'err', 'This browser blocked the clipboard — long-press to copy:<br>' + esc(c.caption).replace(/\n/g, '<br>')) }
+  });
+  document.querySelectorAll('[data-share]').forEach(b => b.onclick = () => shareCarousel(+b.dataset.share, b));
+}
+// full-size slides → the phone's share sheet (Save to Photos, or straight into Instagram); downloads where sharing files isn't supported
+async function shareCarousel(ci, btn) {
+  const c = cars[ci], id = 'carMsg' + ci; btn.disabled = true;
+  try {
+    const files = [];
+    for (let i = 0; i < c.slides.length; i++) {
+      const s = c.slides[i], path = s.full || s.src, ext = path.split('.').pop(), type = ext === 'mp4' ? 'video/mp4' : ext === 'png' ? 'image/png' : 'image/jpeg';
+      msg(id, 'info', `Getting slide ${i + 1} of ${c.slides.length}…`);
+      files.push(new File([await rawFile(path, type)], `${c.slug}-${String(i + 1).padStart(2, '0')}.${ext}`, { type }));
+    }
+    if (navigator.canShare && navigator.canShare({ files })) {
+      clearMsg(id);
+      await navigator.share({ files, title: c.title || c.slug });
+      msg(id, 'ok', 'Shared. On Instagram, pick the slides in this order (01 first).');
+    } else {
+      for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)) }
+      msg(id, 'ok', `Downloaded ${files.length} files (01 first).`);
+    }
+  } catch (e) { if (e && e.name === 'AbortError') clearMsg(id); else msg(id, 'err', esc(e.message || String(e))) }
+  btn.disabled = false;
+}
 
 // ---------- tab 3: library ----------
 let lib = [], libTag = '', thumbs = {};

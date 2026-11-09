@@ -11,3 +11,7 @@ A static page that feeds the Rupee Mechanics studio: reference links and videos,
 - **Android (Chrome):** open the page → menu ⋮ → *Add to Home screen* / *Install*. RM Inbox then appears in every app's Share menu (Instagram → Share → RM Inbox).
 - **iPhone:** iOS doesn't let web pages join the Share menu, so a Shortcut does it once: Shortcuts → **+** → *Receive* **URLs** *from* **Share Sheet** → add **URL Encode** (Shortcut Input) → add **Open URLs** with `https://arcbha.github.io/rm-inbox/?url=` followed by the *URL Encoded Text* variable → name it **Send to RM**. Instagram → Share → *Share to…* (or ⋯ More) → **Send to RM**.
 - Either way the link lands in References → Links with one tap left (**Send to studio**). The page reads `?url=`, `?text=` or `?title=`.
+
+## Carousels (Studio tab)
+
+Carousels rendered by `engine/carousel.py` appear above the reels: swipe the slides, tap ▶ on a video slide, **Share / Save** sends the full-size slides (PNG + MP4, in order) to the phone's share sheet — *Save to Photos* or straight into Instagram — and **Copy caption** copies the post text.
