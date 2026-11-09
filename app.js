@@ -626,6 +626,23 @@ async function deleteRef(btn, id) {
 $('libQ').oninput = drawLibrary;
 $('libAdd').onclick = () => showTab('refs');
 
+// ---------- quick tags: one tap adds a tag the studio routes on (pacing → pacer agent, transitions → transitioner agent) ----------
+const QUICK = ['pacing', 'transitions', 'hook', 'typography', 'kinetic'];
+function drawQuick() {
+  document.querySelectorAll('.quick').forEach(row => {
+    const inp = $(row.dataset.for), cur = tagList(inp.value).map(t => t.toLowerCase());
+    row.innerHTML = QUICK.map(t => `<button type="button" class="tag${cur.includes(t) ? ' on' : ''}" data-q="${t}">${t}</button>`).join('');
+    row.querySelectorAll('[data-q]').forEach(b => b.onclick = () => {
+      const list = tagList(inp.value), i = list.map(x => x.toLowerCase()).indexOf(b.dataset.q);
+      if (i >= 0) list.splice(i, 1); else list.push(b.dataset.q);
+      inp.value = list.join(', '); drawQuick();
+    });
+    inp.oninput = drawQuick;
+  });
+}
+drawQuick();
+['sendLinks', 'sendVid'].forEach(id => $(id).addEventListener('click', () => setTimeout(drawQuick, 1500)));
+
 // ---------- share button: Android (installed page in the Share menu) and iPhone (a Shortcut opening ?url=…) ----------
 // The phone opens RM Inbox with ?url= / ?text= / ?title=. We keep the link until a token exists, put it in Links and
 // leave one tap ("Send to studio"), so a stray reload never sends twice.

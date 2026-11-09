@@ -87,6 +87,7 @@ input[type=file]::file-selector-button{font:inherit;font-weight:600;color:var(--
 .tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .tag{border:0;font:inherit;font-size:12px;font-weight:600;padding:6px 10px;border-radius:999px;background:#fff;color:var(--sub);box-shadow:0 0 0 1px var(--line)}
 .tag.on{background:var(--ink);color:#fff;box-shadow:none}
+.quick{margin-top:8px}.quick .tag{cursor:pointer}
 .lib{display:grid;grid-template-columns:1fr;gap:12px}
 @media (min-width:520px){.lib{grid-template-columns:1fr 1fr}}
 .ref{background:var(--surf);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
@@ -174,6 +175,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <div id="linkCards"></div>
         <label for="tags">Tags (optional, comma-separated)</label>
         <input id="tags" placeholder="camera push, product, chart">
+        <div class="tagrow quick" data-for="tags"></div>
         <div style="height:14px"></div>
         <button class="btn primary" id="sendLinks" disabled>Send to studio</button>
         <div class="bar" id="linksBar"><i></i></div>
@@ -190,6 +192,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <input id="vidNote" placeholder="what I like: …">
         <label for="vidTags">Tags</label>
         <input id="vidTags" placeholder="optional">
+        <div class="tagrow quick" data-for="vidTags"></div>
         <div style="height:14px"></div>
         <button class="btn primary" id="sendVid" disabled>Upload</button>
         <div class="bar" id="vidBar"><i></i></div>
