@@ -53,6 +53,10 @@ input[type=file]::file-selector-button{font:inherit;font-weight:600;color:var(--
 .th .ctl{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;padding:6px;background:linear-gradient(transparent,rgba(13,18,34,.55))}
 .th .ctl button{width:32px;height:32px;border-radius:10px;border:0;background:rgba(255,255,255,.92);font-size:16px;font-weight:700;color:var(--ink)}
 .th .ctl button.x{color:var(--loss)}
+.th video{width:100%;height:100%;object-fit:cover;display:block;background:#0d1222}
+.th .ty{position:absolute;right:6px;top:6px;background:var(--blue);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;border-radius:8px;padding:2px 7px}
+.kindrow{margin-top:10px;font-size:13px;color:var(--sub)}
+.kindrow b{color:var(--ink)}
 .msg{font-size:14px;border-radius:14px;padding:12px 14px;margin-top:12px;display:none}
 .msg.on{display:block}
 .msg.ok{background:rgba(31,157,107,.1);color:#126b48}
@@ -148,7 +152,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
     <section data-pane="refs">
       <div class="card">
         <h2>Links</h2>
-        <p class="hint">X, Instagram or YouTube. One per line. Add a note on what to learn from each.</p>
+        <p class="hint">X, Instagram or YouTube — reels, videos, and carousel or photo posts. One per line. Add a note on what to learn from each. If Instagram blocks a carousel link, save the slides and use “Or upload files”.</p>
         <textarea id="links" placeholder="https://x.com/…/status/…&#10;https://www.instagram.com/reel/…"></textarea>
         <div id="linkCards"></div>
         <label for="tags">Tags (optional, comma-separated)</label>
@@ -159,15 +163,18 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <div class="msg" id="linksMsg"></div>
       </div>
       <div class="card">
-        <h2>Or upload the video</h2>
-        <p class="hint">Use this when a link fails (login wall, rate limit). MP4 or MOV, up to 90 MB.</p>
-        <input id="vid" type="file" accept="video/mp4,video/quicktime,video/*">
+        <h2>Or upload files</h2>
+        <p class="hint">A reel, an image, or a whole carousel (pictures and videos mixed). Add them in swipe order — use ‹ › to reorder. Up to 20 files; each video up to 90 MB.</p>
+        <div class="drop" id="upDrop">Paste, drop here, or <b>choose files</b>
+          <input id="vid" type="file" accept="image/*,video/mp4,video/quicktime,video/*" multiple class="hide"></div>
+        <div class="kindrow" id="upKind"></div>
+        <div class="thumbs" id="upThumbs"></div>
         <label for="vidNote">Note</label>
         <input id="vidNote" placeholder="what I like: …">
         <label for="vidTags">Tags</label>
         <input id="vidTags" placeholder="optional">
         <div style="height:14px"></div>
-        <button class="btn primary" id="sendVid" disabled>Upload video</button>
+        <button class="btn primary" id="sendVid" disabled>Upload</button>
         <div class="bar" id="vidBar"><i></i></div>
         <div class="msg" id="vidMsg"></div>
       </div>
