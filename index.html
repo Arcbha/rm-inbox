@@ -114,6 +114,19 @@ input[type=file]::file-selector-button{font:inherit;font-weight:600;color:var(--
 .reel .pic .nopic{position:absolute;left:0;right:0;bottom:12px;text-align:center;font-size:11px;letter-spacing:.06em;color:rgba(255,255,255,.55)}
 .reel .pic .stamp{position:absolute;z-index:2;left:10px;top:10px;font-size:11px;font-weight:700;letter-spacing:.06em;background:rgba(13,18,34,.75);color:#fff;border-radius:6px;padding:3px 7px}
 .reel .pic.on .stamp{display:none}
+.cars{display:grid;grid-template-columns:1fr;gap:14px}
+@media (min-width:720px){.cars{grid-template-columns:1fr 1fr}}
+.car .strip{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:#0d1222}
+.car .strip::-webkit-scrollbar{display:none}
+.car .sl{position:relative;flex:0 0 100%;aspect-ratio:4/5;scroll-snap-align:start;background:#dfe3ec center/cover no-repeat}
+.car .sl video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+.car .sl .play{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;border:0;background:rgba(255,255,255,.94);font-size:24px;color:var(--ink);box-shadow:0 10px 24px rgba(0,0,0,.35)}
+.car .sl .vtag{position:absolute;right:10px;top:10px;font-size:11px;font-weight:700;letter-spacing:.06em;background:var(--blue);color:#fff;border-radius:6px;padding:3px 7px}
+.car .dots{display:flex;gap:6px;justify-content:center;padding:10px 0 0}
+.car .dots i{width:7px;height:7px;border-radius:50%;background:#c4cad8}
+.car .dots i.on{background:var(--ink)}
+.car .acts{display:flex;gap:8px;margin-top:12px}
+.car .acts .btn{flex:1}
 .reels{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (min-width:720px){.reels{grid-template-columns:1fr 1fr 1fr}}
 .ok{color:var(--gain)}.bad{color:var(--loss)}
@@ -228,6 +241,8 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <p class="hint" style="margin:10px 0 0">Phone-size copies of every render. “Preview” = estimated timing, no voice yet.</p>
         <div class="msg" id="reelMsg"></div>
       </div>
+      <div id="carWrap" class="hide"><div class="sec"><h3 style="margin:14px 4px 8px"><span>Carousels</span><span id="carCount"></span></h3></div><div class="cars" id="carGrid"></div>
+        <div class="sec"><h3 style="margin:18px 4px 8px"><span>Reels</span></h3></div></div>
       <div class="reels" id="reelGrid"></div>
     </section>
 
