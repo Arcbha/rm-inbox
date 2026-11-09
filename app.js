@@ -115,7 +115,7 @@ $('connect').onclick = async () => {
     const r = await api(`/repos/${repo}`);
     if (!r.permissions || !r.permissions.push) throw new GhError(403);
     await api(`/repos/${repo}/git/ref/heads/${encodeURIComponent(branch)}`);
-    $('tok').value = ''; clearMsg('setupMsg'); boot();
+    $('tok').value = ''; clearMsg('setupMsg'); boot(); applyShared();
   } catch (e) { store.del(K.tok); msg('setupMsg', 'err', esc(e.message)) }
 };
 $('forget').onclick = () => { if (confirm('Forget the token on this device?')) { store.del(K.tok); boot() } };
@@ -155,7 +155,7 @@ $('sendLinks').onclick = async () => {
     b64: b64utf8(JSON.stringify({ url: l.url, note: l.note.trim(), tags, added }, null, 2) + '\n') }));
   try {
     await commitFiles(files, `inbox: ${files.length} reference link${files.length > 1 ? 's' : ''}`, p => bar('linksBar', p));
-    msg('linksMsg', 'ok', `Sent ${files.length} link${files.length > 1 ? 's' : ''}. The download usually takes 1–3 minutes — watch the Status tab.`);
+    clearMsg('shareMsg'); msg('linksMsg', 'ok', `Sent ${files.length} link${files.length > 1 ? 's' : ''}. The download usually takes 1–3 minutes — watch the Status tab.`);
     $('links').value = ''; $('tags').value = ''; parseLinks();
   } catch (e) { msg('linksMsg', 'err', esc(e.message)); btn.disabled = false }
   bar('linksBar', null);
@@ -555,4 +555,28 @@ async function deleteRef(btn, id) {
 $('libQ').oninput = drawLibrary;
 $('libAdd').onclick = () => showTab('refs');
 
+// ---------- share button: Android (installed page in the Share menu) and iPhone (a Shortcut opening ?url=…) ----------
+// The phone opens RM Inbox with ?url= / ?text= / ?title=. We keep the link until a token exists, put it in Links and
+// leave one tap ("Send to studio"), so a stray reload never sends twice.
+const SHARE_KEY = 'rm.shared';
+function takeShared() {
+  const q = new URLSearchParams(location.search);
+  const found = ['url', 'text', 'title'].map(k => q.get(k) || '').join(' ').match(/https?:\/\/[^\s<>"']+/);
+  if (found) { try { sessionStorage.setItem(SHARE_KEY, found[0]) } catch {} }
+  if (q.has('url') || q.has('text') || q.has('title')) history.replaceState(null, '', location.pathname);
+}
+function applyShared() {
+  let u = ''; try { u = sessionStorage.getItem(SHARE_KEY) || '' } catch {}
+  if (!u || !cfg().tok) return;
+  try { sessionStorage.removeItem(SHARE_KEY) } catch {}
+  showTab('refs');
+  const cur = $('links').value.trim();
+  if (!cur.includes(u)) $('links').value = (cur ? cur + '\n' : '') + u;
+  parseLinks();
+  msg('shareMsg', 'info', 'Shared from your phone. Add a note on what you like, then tap <b>Send to studio</b>.');
+  const note = $('linkCards').querySelector('input'); if (note) note.focus();
+}
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+takeShared();
 boot();
+applyShared();
