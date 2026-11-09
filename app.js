@@ -160,25 +160,64 @@ $('sendLinks').onclick = async () => {
   } catch (e) { msg('linksMsg', 'err', esc(e.message)); btn.disabled = false }
   bar('linksBar', null);
 };
-$('vid').onchange = () => {
-  const f = $('vid').files[0]; clearMsg('vidMsg');
-  if (f && f.size > MAX_VIDEO) { msg('vidMsg', 'err', `That file is ${(f.size / 1048576).toFixed(0)} MB. The limit is 90 MB — trim it or export at 1080p.`); $('sendVid').disabled = true; return }
-  $('sendVid').disabled = !f;
-};
+// one upload card for a reel, an image or a carousel (pictures + videos in swipe order)
+const MAX_FILES = 20, MAX_TOTAL = 150 * 1024 * 1024;
 const readB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.slice(r.result.indexOf(',') + 1)); r.onerror = () => rej(new Error('Could not read the file on this device.')); r.readAsDataURL(f) });
+let ups = []; // [{kind:'image'|'video', blob, name, url, ext}]
+const upKind = () => !ups.length ? '' : ups.length === 1 ? (ups[0].kind === 'video' ? 'reel' : 'image') : 'carousel';
+const isVideo = f => f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm)$/i.test(f.name || '');
+const isImage = f => f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(f.name || '');
+async function addUploads(list) {
+  clearMsg('vidMsg');
+  for (const f of [...list]) {
+    if (ups.length >= MAX_FILES) { msg('vidMsg', 'err', `The limit is ${MAX_FILES} files per reference.`); break }
+    if (isVideo(f) || f.type === 'image/gif') {
+      if (f.size > MAX_VIDEO) { msg('vidMsg', 'err', `${esc(f.name)} is ${(f.size / 1048576).toFixed(0)} MB. The limit is 90 MB per video — trim it or export at 1080p.`); continue }
+      const ext = f.type === 'image/gif' ? 'gif' : ((f.name || '').match(/\.(mp4|mov|m4v|webm)$/i) || [, 'mp4'])[1].toLowerCase();
+      ups.push({ kind: 'video', blob: f, name: f.name || `video.${ext}`, url: URL.createObjectURL(f), ext });
+    } else if (isImage(f)) {
+      try { const blob = await compress(f); ups.push({ kind: 'image', blob, name: f.name || 'image.jpg', url: URL.createObjectURL(blob), ext: 'jpg' }) }
+      catch { msg('vidMsg', 'err', `Couldn’t read ${esc(f.name || 'an image')} — try a PNG or JPEG.`) }
+    } else msg('vidMsg', 'err', `${esc(f.name || 'That file')} isn’t a video or picture.`);
+  }
+  drawUploads();
+}
+function drawUploads() {
+  const total = ups.reduce((n, u) => n + u.blob.size, 0), k = upKind();
+  const nv = ups.filter(u => u.kind === 'video').length, ni = ups.length - nv;
+  $('upKind').innerHTML = k ? `Studio reads this as <b>${k}</b>${k === 'carousel' ? ` · ${ni} picture${ni === 1 ? '' : 's'}, ${nv} video${nv === 1 ? '' : 's'}` : ''} · ${(total / 1048576).toFixed(1)} MB` : '';
+  $('upThumbs').innerHTML = ups.map((u, i) => `<div class="th">${u.kind === 'video' ? `<video src="${u.url}#t=0.1" muted playsinline preload="metadata"></video><span class="ty">VIDEO</span>` : `<img src="${u.url}" alt="">`}<span class="n">${String(i + 1).padStart(2, '0')}</span>
+    <div class="ctl"><button data-a="up" data-i="${i}" aria-label="Move earlier">‹</button><button class="x" data-a="x" data-i="${i}" aria-label="Remove">×</button><button data-a="dn" data-i="${i}" aria-label="Move later">›</button></div></div>`).join('');
+  $('upThumbs').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const i = +b.dataset.i, a = b.dataset.a;
+    if (a === 'x') { URL.revokeObjectURL(ups[i].url); ups.splice(i, 1) }
+    else { const j = a === 'up' ? i - 1 : i + 1; if (j >= 0 && j < ups.length) [ups[i], ups[j]] = [ups[j], ups[i]] }
+    drawUploads();
+  });
+  const tooBig = total > MAX_TOTAL;
+  if (tooBig) msg('vidMsg', 'err', `${(total / 1048576).toFixed(0)} MB in total. The limit is 150 MB per upload — remove or trim a video.`);
+  $('sendVid').disabled = !ups.length || tooBig;
+  $('sendVid').textContent = !ups.length ? 'Upload' : k === 'carousel' ? `Upload carousel (${ups.length})` : k === 'reel' ? 'Upload reel' : 'Upload image';
+}
+$('upDrop').onclick = e => { if (e.target.tagName !== 'INPUT') $('vid').click() };
+$('vid').onchange = () => { addUploads($('vid').files); $('vid').value = '' };
+['dragenter', 'dragover'].forEach(ev => $('upDrop').addEventListener(ev, e => { e.preventDefault(); $('upDrop').classList.add('over') }));
+['dragleave', 'drop'].forEach(ev => $('upDrop').addEventListener(ev, e => { e.preventDefault(); $('upDrop').classList.remove('over') }));
+$('upDrop').addEventListener('drop', e => addUploads(e.dataTransfer.files));
 $('sendVid').onclick = async () => {
-  const f = $('vid').files[0]; if (!f) return;
-  const btn = $('sendVid'); btn.disabled = true; msg('vidMsg', 'info', 'Reading the video…');
+  if (!ups.length) return;
+  const btn = $('sendVid'); btn.disabled = true; msg('vidMsg', 'info', 'Reading the files…');
   try {
-    const ts = stamp(), ext = (f.name.match(/\.(mp4|mov|m4v|webm)$/i) || [, 'mp4'])[1].toLowerCase();
-    const b64 = await readB64(f);
-    msg('vidMsg', 'info', `Uploading ${(f.size / 1048576).toFixed(1)} MB…`);
-    await commitFiles([
-      { path: `references/queue/${ts}.${ext}`, b64 },
-      { path: `references/queue/${ts}.json`, b64: b64utf8(JSON.stringify({ file: `${ts}.${ext}`, name: f.name, note: $('vidNote').value.trim(), tags: tagList($('vidTags').value), added: new Date().toISOString() }, null, 2) + '\n') },
-    ], `inbox: reference upload ${f.name}`, p => bar('vidBar', p));
-    msg('vidMsg', 'ok', 'Uploaded. The studio moves it into references/inbox within a couple of minutes.');
-    $('vid').value = ''; $('vidNote').value = ''; $('vidTags').value = '';
+    const ts = stamp(), k = upKind(), files = [];
+    const names = ups.map((u, i) => `${ts}-${String(i + 1).padStart(2, '0')}.${u.ext}`);
+    for (let i = 0; i < ups.length; i++) files.push({ path: `references/queue/${names[i]}`, b64: await readB64(ups[i].blob) });
+    files.push({ path: `references/queue/${ts}.json`, b64: b64utf8(JSON.stringify({ kind: k, files: names, names: ups.map(u => u.name), note: $('vidNote').value.trim(), tags: tagList($('vidTags').value), added: new Date().toISOString() }, null, 2) + '\n') });
+    const mb = (ups.reduce((n, u) => n + u.blob.size, 0) / 1048576).toFixed(1);
+    msg('vidMsg', 'info', `Uploading ${mb} MB…`);
+    await commitFiles(files, `inbox: reference ${k} upload (${ups.length} file${ups.length > 1 ? 's' : ''})`, p => bar('vidBar', p));
+    msg('vidMsg', 'ok', `Uploaded the ${k}. The studio moves it into references/inbox within a couple of minutes — watch the Status tab.`);
+    ups.forEach(u => URL.revokeObjectURL(u.url)); ups = []; drawUploads();
+    $('vidNote').value = ''; $('vidTags').value = '';
   } catch (e) { msg('vidMsg', 'err', esc(e.message)); btn.disabled = false }
   bar('vidBar', null);
 };
@@ -226,9 +265,9 @@ $('imgs').onchange = () => { addImages($('imgs').files); $('imgs').value = '' };
 ['dragleave', 'drop'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over') }));
 $('drop').addEventListener('drop', e => addImages(e.dataTransfer.files));
 document.addEventListener('paste', e => {
-  if (store.get(K.tab) !== 'news') return;
+  const tab = store.get(K.tab); if (tab !== 'news' && tab !== 'refs') return;
   const files = [...(e.clipboardData || {}).items || []].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
-  if (files.length) { e.preventDefault(); addImages(files) }
+  if (files.length) { e.preventDefault(); tab === 'news' ? addImages(files) : addUploads(files) }
 });
 const blobB64 = b => readB64(b);
 $('sendNews').onclick = async () => {
@@ -275,24 +314,31 @@ async function loadStatus() {
     const q = under('references/queue/').filter(x => !x.includes('/'));
     const stems = [...new Set(q.filter(x => x.endsWith('.json')).map(x => x.slice(0, -5)))].sort().reverse();
     const errs = Object.fromEntries(await Promise.all(stems.filter(s => q.includes(s + '.error.txt')).map(async s => [s, await fileText(`references/queue/${s}.error.txt`).catch(() => 'Failed (details unavailable).')])));
+    const qMeta = {};
     const qItems = await Promise.all(stems.map(async s => {
       let meta = {}; try { meta = JSON.parse(await fileText(`references/queue/${s}.json`)) } catch {}
-      const title = esc(meta.url || meta.name || s), when = tsFromStem(s) ? ago(tsFromStem(s)) : '';
+      qMeta[s] = meta;
+      const n = (meta.files || []).length;
+      const title = esc(meta.url || (n > 1 ? `${meta.kind || 'carousel'} · ${n} files` : (meta.names || [])[0] || meta.name || s)), when = tsFromStem(s) ? ago(tsFromStem(s)) : '';
       const note = meta.note ? ' · “' + esc(meta.note) + '”' : '';
       if (errs[s]) return item('err', title, `Failed · ${when}${note}`, `<div class="e">${esc(errs[s].trim())}</div><div class="acts"><button class="btn ghost small" data-retry="${esc(s)}">Retry</button><button class="btn ghost small danger" data-dismiss="${esc(s)}">Remove</button></div>`);
       return item(running ? 'run' : 'wait', title, `${running ? 'Downloading now' : 'Waiting for the Action'} · ${when}${note}`);
     }));
 
     // inbox + cards
-    const inbox = under('references/inbox/').filter(x => /\.(mp4|mov|webm)$/.test(x)).map(x => x.replace(/\.\w+$/, ''));
+    const inboxAll = under('references/inbox/');
+    const folders = {};
+    inboxAll.filter(x => x.includes('/')).forEach(x => { const [id, f] = x.split('/'); (folders[id] = folders[id] || []).push(f) });
+    const kindLbl = id => folders[id] ? (folders[id].length > 1 ? `carousel · ${folders[id].length} slides` : 'image') : 'reel';
+    const inbox = [...inboxAll.filter(x => !x.includes('/') && /\.(mp4|mov|webm)$/.test(x)).map(x => x.replace(/\.\w+$/, '')), ...Object.keys(folders)];
     const cards = new Set(under('references/cards/').filter(x => x.includes('/')).map(x => x.split('/')[0]));
     const cardMd = new Set(under('references/cards/').filter(x => x.endsWith('/card.md')).map(x => x.split('/')[0]));
     let index = [];
     if (paths.includes('references/index.json')) { try { const j = JSON.parse(await fileText('references/index.json')); index = (Array.isArray(j) ? j : j.cards || []).filter(e => e.studied).map(e => e.id) } catch {} }
     const studied = new Set(index);
-    const iItems = inbox.sort().reverse().map(id => studied.has(id) ? item('ok', esc(id), 'Studied — card in references/cards')
-      : cards.has(id) ? item('wait', esc(id), 'Measured (sheet, clip, metrics) · waiting for /study')
-      : item('wait', esc(id), 'Downloaded · waiting for /study'));
+    const iItems = inbox.sort().reverse().map(id => studied.has(id) ? item('ok', esc(id), `${kindLbl(id)} · Studied — card in references/cards`)
+      : cards.has(id) ? item('wait', esc(id), `${kindLbl(id)} · Measured · waiting for /study`)
+      : item('wait', esc(id), `${kindLbl(id)} · Downloaded · waiting for /study`));
     const cItems = [...cards].sort().map(id => item(studied.has(id) ? 'ok' : 'wait', esc(id), studied.has(id) ? 'Studied' : cardMd.has(id) ? 'Measured · techniques wait for /study' : 'Measuring…'));
 
     // news + reels
@@ -318,22 +364,23 @@ async function loadStatus() {
 
     $('statusBody').innerHTML = `<div class="card sec"><h3><span>Latest run</span></h3>${aHtml}</div>`
       + section('Queue · references/queue', qItems, 'Nothing waiting.')
-      + section('Downloaded · references/inbox', iItems, 'No videos yet.')
+      + section('Downloaded · references/inbox', iItems, 'No references yet.')
       + section('Cards · references/cards', cItems, 'No cards yet.')
       + section('News · news/inbox', nItems, 'No stories yet.')
       + section('Reels · studio/reels', rItems, 'No reels yet.');
-    $('statusBody').querySelectorAll('[data-retry]').forEach(b => b.onclick = () => queueAct(b, 'retry', b.dataset.retry, q));
-    $('statusBody').querySelectorAll('[data-dismiss]').forEach(b => b.onclick = () => queueAct(b, 'dismiss', b.dataset.dismiss, q));
+    $('statusBody').querySelectorAll('[data-retry]').forEach(b => b.onclick = () => queueAct(b, 'retry', b.dataset.retry, q, qMeta));
+    $('statusBody').querySelectorAll('[data-dismiss]').forEach(b => b.onclick = () => queueAct(b, 'dismiss', b.dataset.dismiss, q, qMeta));
     $('stamp').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' · refreshes every 15 s';
     clearMsg('statusMsg');
   } catch (e) { msg('statusMsg', 'err', esc(e.message)) }
   loading = false;
 }
-async function queueAct(btn, kind, stem, q) {
+async function queueAct(btn, kind, stem, q, qMeta = {}) {
   if (kind === 'dismiss' && !confirm('Remove this item from the queue?')) return;
   btn.disabled = true;
+  const own = new Set([...((qMeta[stem] || {}).files || []), (qMeta[stem] || {}).file].filter(Boolean));   // carousel uploads: <stem>-01.jpg …
   const files = kind === 'retry' ? [{ path: `references/queue/${stem}.error.txt`, del: true }]
-    : q.filter(x => x.startsWith(stem + '.')).map(x => ({ path: `references/queue/${x}`, del: true }));
+    : q.filter(x => x.startsWith(stem + '.') || own.has(x)).map(x => ({ path: `references/queue/${x}`, del: true }));
   try { await commitFiles(files, `inbox: ${kind} ${stem}`); msg('statusMsg', 'ok', kind === 'retry' ? 'Retrying — the Action starts in a few seconds.' : 'Removed.'); loadStatus() }
   catch (e) { msg('statusMsg', 'err', esc(e.message)); btn.disabled = false }
 }
@@ -475,23 +522,27 @@ function drawLibrary() {
   $('libGrid').innerHTML = shown.map(c => {
     const gold = c.id === 'golden-reel-v3', src = gold ? 'gold' : (c.id.split('-')[0] || 'web');
     const link = c.src && /^https?:/.test(c.src) ? `<a href="${esc(c.src)}" target="_blank" rel="noopener">Open original ↗</a>` : '<span>uploaded file</span>';
+    const kind = c.kind || 'reel', post = kind !== 'reel';
+    const kindTag = kind === 'carousel' ? `<span class="src" style="left:auto;right:58px;background:var(--blue)">CAROUSEL · ${c.slides}</span>` : kind === 'image' ? '<span class="src" style="left:auto;right:58px;background:var(--blue)">IMAGE</span>' : '';
+    const stats = post && c.motion == null ? `${c.slides} slide${c.slides === 1 ? '' : 's'} · ${c.images || 0} img · ${c.videos || 0} vid`
+      : `${post ? `${c.slides} slides · ` : ''}pan ${c.pan ?? '–'}% · motion ${c.motion ?? '–'} · cuts ${c.cuts ?? '–'}`;
     return `<div class="ref"><div class="pic" data-pic="${esc(c.id)}" style="${thumbs[c.id] ? `background-image:url(${thumbs[c.id]})` : ''}">
-        ${gold ? '<span class="gold">HOUSE REFERENCE</span>' : `<span class="src">${esc(SRCNAME[src] || src.toUpperCase())}</span><button class="del" data-del="${esc(c.id)}" aria-label="Delete">🗑</button>`}</div>
-      <div class="body"><div class="id">${esc(c.id)} · ${c.dur ? c.dur + 's' : ''} ${esc(c.aspect || '')}</div>
+        ${gold ? '<span class="gold">HOUSE REFERENCE</span>' : `<span class="src">${esc(SRCNAME[src] || src.toUpperCase())}</span>${kindTag}<button class="del" data-del="${esc(c.id)}" aria-label="Delete">🗑</button>`}</div>
+      <div class="body"><div class="id">${esc(c.id)} · ${post ? kind + ' · ' : ''}${c.dur ? c.dur + 's' : ''} ${esc(c.aspect || '')}</div>
         <div class="note">${esc(c.note || (gold ? 'The golden reel' : 'No note'))}</div>
         <div class="tagrow" style="margin-top:4px">${tagsOf(c).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
         ${(c.techniques || []).length ? `<ul class="tech">${c.techniques.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : `<div class="id" style="margin-top:6px">${c.studied ? '' : 'Techniques pending — run /study'}</div>`}
-        <div class="meta"><span>pan ${c.pan ?? '–'}% · motion ${c.motion ?? '–'} · cuts ${c.cuts ?? '–'}</span>${link}</div></div></div>`;
+        <div class="meta"><span>${stats}</span>${link}</div></div></div>`;
   }).join('') || '<div class="card empty">Nothing matches.</div>';
   $('libGrid').querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteRef(b, b.dataset.del));
 }
 async function deleteRef(btn, id) {
-  if (!confirm(`Delete ${id} from the library? (video, card and index entry)`)) return;
+  if (!confirm(`Delete ${id} from the library? (its video or slides, card and index entry)`)) return;
   btn.disabled = true;
   const { repo, branch } = cfg();
   try {
     const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
-    const paths = tree.tree.filter(t => t.type === 'blob' && (t.path.startsWith(`references/cards/${id}/`) || t.path === `references/inbox/${id}.mp4` || t.path === `references/inbox/${id}.json`)).map(t => ({ path: t.path, del: true }));
+    const paths = tree.tree.filter(t => t.type === 'blob' && (t.path.startsWith(`references/cards/${id}/`) || t.path.startsWith(`references/inbox/${id}/`) || t.path === `references/inbox/${id}.mp4` || t.path === `references/inbox/${id}.json`)).map(t => ({ path: t.path, del: true }));
     await commitFiles(paths, `inbox: delete reference ${id}`, null, async head => {
       const r = await api(`/repos/${repo}/contents/references/index.json?ref=${head}`);   // fresh index on every attempt (the Action may have added one)
       const j = JSON.parse(utf8b64(r.content)), cards = (Array.isArray(j) ? j : j.cards || []).filter(c => c.id !== id);
