@@ -145,14 +145,21 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab
 // ---------- tab 1: references ----------
 const SRC = [[/(^|\.)(x|twitter)\.com$/, 'x'], [/(^|\.)instagram\.com$/, 'ig'], [/(^|\.)(youtube\.com|youtu\.be)$/, 'yt']];
 const srcOf = u => { try { const h = new URL(u).hostname; return (SRC.find(([re]) => re.test(h)) || [0, 'web'])[1] } catch { return null } };
-let links = []; // [{url, note}]
+// who learns from a reference (the studio routes on it at /study); last option = let the studio decide
+const LEARN = [['hook', 'Visual hook — opening seconds'], ['pacing', 'Pacing — rhythm & timing (pacer)'], ['transitions', 'Transitions & easing (transitioner)'],
+  ['color', 'Colour & grading (colorist)'], ['script', 'Script & story (storyteller)'], ['carousel', 'Carousel format'], ['auto', 'Let the studio decide (general)']];
+const learnSelect = (val, attrs = '') => `<select class="learn" ${attrs}>${LEARN.map(([v, l]) => `<option value="${v}"${v === (val || 'auto') ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+const LEARN_NAME = Object.fromEntries(LEARN.map(([v, l]) => [v, l.split(' —')[0].split(' (')[0]]));
+let links = []; // [{url, note, learn}]
 function parseLinks() {
   const urls = [...new Set(($('links').value.match(/https?:\/\/[^\s<>"']+/g) || []).map(u => u.replace(/[),.]+$/, '')))];
-  const old = Object.fromEntries(links.map(l => [l.url, l.note]));
-  links = urls.filter(srcOf).map(url => ({ url, note: old[url] || '' }));
+  const old = Object.fromEntries(links.map(l => [l.url, l]));
+  links = urls.filter(srcOf).map(url => ({ url, note: (old[url] || {}).note || '', learn: (old[url] || {}).learn || 'auto' }));
   $('linkCards').innerHTML = links.map((l, i) => `<div class="link"><div class="u"><span class="src">${srcOf(l.url)}</span>${esc(l.url)}</div>
-    <input data-i="${i}" placeholder="what I like: …" value="${esc(l.note)}"></div>`).join('');
+    <input data-i="${i}" placeholder="what I like: …" value="${esc(l.note)}">
+    <label style="margin:10px 0 4px">Who learns from this?</label>${learnSelect(l.learn, `data-li="${i}"`)}</div>`).join('');
   $('linkCards').querySelectorAll('input').forEach(inp => inp.oninput = () => links[inp.dataset.i].note = inp.value);
+  $('linkCards').querySelectorAll('select[data-li]').forEach(sel => sel.onchange = () => links[sel.dataset.li].learn = sel.value);
   $('sendLinks').disabled = !links.length;
   $('sendLinks').textContent = links.length > 1 ? `Send ${links.length} links to studio` : 'Send to studio';
 }
@@ -161,7 +168,7 @@ $('sendLinks').onclick = async () => {
   const btn = $('sendLinks'); btn.disabled = true; clearMsg('linksMsg');
   const ts = stamp(), tags = tagList($('tags').value), added = new Date().toISOString();
   const files = links.map((l, i) => ({ path: `references/queue/${ts}${links.length > 1 ? '-' + (i + 1) : ''}.json`,
-    b64: b64utf8(JSON.stringify({ url: l.url, note: l.note.trim(), tags, added }, null, 2) + '\n') }));
+    b64: b64utf8(JSON.stringify({ url: l.url, note: l.note.trim(), tags, learn_for: l.learn || 'auto', added }, null, 2) + '\n') }));
   try {
     await commitFiles(files, `inbox: ${files.length} reference link${files.length > 1 ? 's' : ''}`, p => bar('linksBar', p));
     clearMsg('shareMsg'); msg('linksMsg', 'ok', `Sent ${files.length} link${files.length > 1 ? 's' : ''}. The download usually takes 1–3 minutes — watch the Status tab.`);
@@ -220,13 +227,13 @@ $('sendVid').onclick = async () => {
     const ts = stamp(), k = upKind(), files = [];
     const names = ups.map((u, i) => `${ts}-${String(i + 1).padStart(2, '0')}.${u.ext}`);
     for (let i = 0; i < ups.length; i++) files.push({ path: `references/queue/${names[i]}`, b64: await readB64(ups[i].blob) });
-    files.push({ path: `references/queue/${ts}.json`, b64: b64utf8(JSON.stringify({ kind: k, files: names, names: ups.map(u => u.name), note: $('vidNote').value.trim(), tags: tagList($('vidTags').value), added: new Date().toISOString() }, null, 2) + '\n') });
+    files.push({ path: `references/queue/${ts}.json`, b64: b64utf8(JSON.stringify({ kind: k, files: names, names: ups.map(u => u.name), note: $('vidNote').value.trim(), tags: tagList($('vidTags').value), learn_for: $('upLearn').value || 'auto', added: new Date().toISOString() }, null, 2) + '\n') });
     const mb = (ups.reduce((n, u) => n + u.blob.size, 0) / 1048576).toFixed(1);
     msg('vidMsg', 'info', `Uploading ${mb} MB…`);
     await commitFiles(files, `inbox: reference ${k} upload (${ups.length} file${ups.length > 1 ? 's' : ''})`, p => bar('vidBar', p));
     msg('vidMsg', 'ok', `Uploaded the ${k}. The studio moves it into references/inbox within a couple of minutes — watch the Status tab.`);
     ups.forEach(u => URL.revokeObjectURL(u.url)); ups = []; drawUploads();
-    $('vidNote').value = ''; $('vidTags').value = '';
+    $('vidNote').value = ''; $('vidTags').value = ''; $('upLearn').value = 'auto';
   } catch (e) { msg('vidMsg', 'err', esc(e.message)); btn.disabled = false }
   bar('vidBar', null);
 };
@@ -623,7 +630,7 @@ function drawLibrary() {
         ${gold ? '<span class="gold">HOUSE REFERENCE</span>' : `<span class="src">${esc(SRCNAME[src] || src.toUpperCase())}</span>${kindTag}<button class="del" data-del="${esc(c.id)}" aria-label="Delete">🗑</button>`}</div>
       <div class="body"><div class="id">${esc(c.id)} · ${post ? kind + ' · ' : ''}${c.dur ? c.dur + 's' : ''} ${esc(c.aspect || '')}</div>
         <div class="note">${esc(c.note || (gold ? 'The golden reel' : 'No note'))}</div>
-        <div class="tagrow" style="margin-top:4px">${tagsOf(c).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
+        <div class="tagrow" style="margin-top:4px">${c.learn_for && c.learn_for !== 'auto' ? `<span class="tag" style="background:var(--blue);color:#fff;box-shadow:none">learns: ${esc(LEARN_NAME[c.learn_for] || c.learn_for)}</span>` : ''}${tagsOf(c).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
         ${(c.techniques || []).length ? `<ul class="tech">${c.techniques.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : `<div class="id" style="margin-top:6px">${c.studied ? '' : 'Techniques pending — run /study'}</div>`}
         <div class="meta"><span>${stats}</span>${link}</div></div></div>`;
   }).join('') || '<div class="card empty">Nothing matches.</div>';
@@ -648,8 +655,10 @@ async function deleteRef(btn, id) {
 $('libQ').oninput = drawLibrary;
 $('libAdd').onclick = () => showTab('refs');
 
+$('upLearnWrap').innerHTML = learnSelect('auto', 'id="upLearn"');
+
 // ---------- quick tags: one tap adds a tag the studio routes on (pacing → pacer agent, transitions → transitioner agent) ----------
-const QUICK = ['pacing', 'transitions', 'hook', 'typography', 'kinetic'];
+const QUICK = ['pacing', 'transitions', 'hook', 'color', 'typography', 'kinetic'];
 function drawQuick() {
   document.querySelectorAll('.quick').forEach(row => {
     const inp = $(row.dataset.for), cur = tagList(inp.value).map(t => t.toLowerCase());

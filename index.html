@@ -31,6 +31,7 @@ h1 span{color:var(--blue)}
 .hint{font-size:13px;color:var(--sub);margin-bottom:12px}
 label{display:block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);margin:12px 0 6px}
 input,textarea{width:100%;font:inherit;font-size:16px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;outline:none}
+select.learn{width:100%;font:inherit;font-size:16px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--sub) 50%),linear-gradient(135deg,var(--sub) 50%,transparent 50%);background-position:calc(100% - 20px) 52%,calc(100% - 14px) 52%;background-size:6px 6px;background-repeat:no-repeat}
 input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,92,255,.15)}
 textarea{min-height:96px;resize:vertical}
 input[type=file]{padding:10px;font-size:14px;color:var(--sub)}
@@ -196,6 +197,8 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <label for="vidTags">Tags</label>
         <input id="vidTags" placeholder="optional">
         <div class="tagrow quick" data-for="vidTags"></div>
+        <label for="upLearn">Who learns from this?</label>
+        <div id="upLearnWrap"></div>
         <div style="height:14px"></div>
         <button class="btn primary" id="sendVid" disabled>Upload</button>
         <div class="bar" id="vidBar"><i></i></div>
