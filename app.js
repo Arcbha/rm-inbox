@@ -187,16 +187,31 @@ async function loadMyRefs() {
     $('myRefsCount').textContent = rows.length;
     box.innerHTML = rows.map(r => `<div class="item myref"${r.href ? ` data-href="${esc(r.href)}"` : ''}><span class="dot ${r.state[0]}"></span><div style="min-width:0;flex:1">
         <div class="t" style="font-size:14px">${esc(r.id || r.title)}${r.kind && r.kind !== 'reel' ? ` <span class="tag">${esc(r.kind)}</span>` : ''}${r.learn && r.learn !== 'auto' ? ` <span class="tag" style="background:var(--blue);color:#fff;box-shadow:none">${esc(LEARN_NAME[r.learn] || r.learn)}</span>` : ''}</div>
-        <div class="s">${esc(r.state[1])}${r.id && r.title !== r.id ? ' · “' + esc(r.title.slice(0, 60)) + '”' : ''}</div></div>${r.href ? '<span class="go2">Open ↗</span>' : ''}</div>`).join('') || '<div class="empty">Nothing sent yet.</div>';
-    box.querySelectorAll('.myref[data-href]').forEach(el => el.onclick = () => window.open(el.dataset.href, '_blank', 'noopener'));
+        <div class="s">${esc(r.state[1])}${r.id && r.title !== r.id ? ' · “' + esc(r.title.slice(0, 60)) + '”' : ''}</div>
+        ${r.id ? `<div class="reroute" style="margin-top:6px"><span class="s">Who learns:</span> ${learnSelect(r.learn, `data-rid="${esc(r.id)}" style="width:auto;max-width:100%;padding:4px 8px;font-size:13px;margin-top:4px"`)}</div>` : ''}</div>${r.href ? '<span class="go2">Open ↗</span>' : ''}</div>`).join('') || '<div class="empty">Nothing sent yet.</div>';
+    box.querySelectorAll('.myref[data-href]').forEach(el => el.onclick = e => { if (e.target.closest('.reroute')) return; window.open(el.dataset.href, '_blank', 'noopener') });
+    box.querySelectorAll('select[data-rid]').forEach(sel => { sel.onclick = e => e.stopPropagation(); sel.onchange = () => reroute(sel.dataset.rid, sel.value, sel) });
   } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>` }
+}
+
+// change who learns from a reference already in the library → a route item in the queue; the inbox Action applies it
+// and /study runs that agent's learn pass on it
+async function reroute(id, learn, sel) {
+  sel.disabled = true;
+  try {
+    const ts = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '');
+    await commitFiles([{ path: `references/queue/route-${ts}-${id}.json`, b64: b64utf8(JSON.stringify({ route: id, learn_for: learn, added: new Date().toISOString() }, null, 2) + '\n') }],
+      `rm-inbox: ${id} → learns: ${learn}`);
+    msg('myRefsMsg', 'ok', `${esc(id)} → <b>${esc(LEARN_NAME[learn] || learn)}</b>. Saved; the studio picks it up at the next /study.`);
+  } catch (e) { msg('myRefsMsg', 'err', 'Could not save: ' + esc(e.message)) } finally { sel.disabled = false }
 }
 
 // ---------- tab 1: references ----------
 const SRC = [[/(^|\.)(x|twitter)\.com$/, 'x'], [/(^|\.)instagram\.com$/, 'ig'], [/(^|\.)(youtube\.com|youtu\.be)$/, 'yt']];
 const srcOf = u => { try { const h = new URL(u).hostname; return (SRC.find(([re]) => re.test(h)) || [0, 'web'])[1] } catch { return null } };
 // who learns from a reference (the studio routes on it at /study); last option = let the studio decide
-const LEARN = [['hook', 'Visual hook — opening seconds'], ['pacing', 'Pacing — rhythm & timing (pacer)'], ['transitions', 'Transitions & easing (transitioner)'],
+const LEARN = [['hook', 'Visual hook — opening seconds'], ['second', 'Second frames — what follows the hook'], ['motion', 'Motion design — kinetic type, 3D, effects'],
+  ['pacing', 'Pacing — rhythm & timing (pacer)'], ['transitions', 'Transitions & easing (transitioner)'],
   ['color', 'Colour & grading (colorist)'], ['script', 'Script & story (storyteller)'], ['carousel', 'Carousel format'], ['auto', 'Let the studio decide (general)']];
 const learnSelect = (val, attrs = '') => `<select class="learn" ${attrs}>${LEARN.map(([v, l]) => `<option value="${v}"${v === (val || 'auto') ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
 const LEARN_NAME = Object.fromEntries(LEARN.map(([v, l]) => [v, l.split(' —')[0].split(' (')[0]]));
