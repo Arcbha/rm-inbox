@@ -97,6 +97,10 @@ input[type=file]::file-selector-button{font:inherit;font-weight:600;color:var(--
 .ref{background:var(--surf);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
 .ref .pic{position:relative;aspect-ratio:16/10;background:#dfe3ec center/cover no-repeat}
 .ref .pic .src{position:absolute;left:10px;top:10px}
+.ref .pic.open{cursor:pointer}
+.ref .pic .go{position:absolute;left:10px;bottom:10px;font-size:12px;font-weight:700;background:rgba(13,18,34,.78);color:#fff;border-radius:8px;padding:4px 8px}
+.myref{cursor:pointer;align-items:center}
+.go2{flex:none;font-size:12px;font-weight:700;color:var(--blue)}
 .ref .pic .del{position:absolute;right:10px;top:10px;width:38px;height:38px;border-radius:12px;border:0;background:rgba(255,255,255,.94);color:var(--loss);font-size:18px;box-shadow:0 4px 12px rgba(13,18,34,.18)}
 .ref .pic .gold{position:absolute;right:10px;top:10px;font-size:11px;font-weight:700;letter-spacing:.08em;background:var(--blue);color:#fff;border-radius:6px;padding:3px 7px}
 .ref .body{padding:12px 14px 14px}
@@ -204,6 +208,9 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <div class="bar" id="vidBar"><i></i></div>
         <div class="msg" id="vidMsg"></div>
       </div>
+      <div class="card sec"><h3><span>Your references</span><span id="myRefsCount"></span></h3>
+        <p class="hint" style="margin:0 4px 6px">Everything you've sent, newest first. Tap one to open the post. Swipe left or right to change tabs.</p>
+        <div id="myRefs"><div class="empty">Loading…</div></div></div>
     </section>
 
     <!-- Tab 2: news -->

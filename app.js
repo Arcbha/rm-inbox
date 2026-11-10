@@ -139,8 +139,58 @@ function showTab(t) {
   if (t === 'status') { loadStatus(); statusTimer = setInterval(loadStatus, 15000) }
   if (t === 'library') loadLibrary();
   if (t === 'studio') loadReels();
+  if (t === 'refs') loadMyRefs();
 }
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+// swipe left / right anywhere on a tab to move to the next / previous tab (phone). Ignored inside things that scroll
+// sideways (carousel strips), text fields, selects and videos, and for mostly-vertical drags.
+const TABS = [...document.querySelectorAll('.tabs button')].map(b => b.dataset.tab);
+let sw = null;
+document.addEventListener('touchstart', e => {
+  const t = e.target;
+  if (e.touches.length !== 1 || t.closest('input,textarea,select,video,.strip,.thumbs,[data-noswipe]')) { sw = null; return }
+  sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() };
+}, { passive: true });
+document.addEventListener('touchend', e => {
+  if (!sw || !cfg().tok) return;
+  const dx = e.changedTouches[0].clientX - sw.x, dy = e.changedTouches[0].clientY - sw.y, dt = Date.now() - sw.at; sw = null;
+  if (Math.abs(dx) < 70 || Math.abs(dx) < 1.6 * Math.abs(dy) || dt > 700) return;
+  const i = TABS.indexOf(store.get(K.tab) || 'refs'), j = i + (dx < 0 ? 1 : -1);
+  if (j < 0 || j >= TABS.length) return;
+  showTab(TABS[j]); window.scrollTo({ top: 0 });
+  const pane = document.querySelector(`[data-pane="${TABS[j]}"]`);
+  if (pane) { pane.style.transform = `translateX(${dx < 0 ? 24 : -24}px)`; pane.style.opacity = '.6'; requestAnimationFrame(() => { pane.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1), opacity .22s'; pane.style.transform = ''; pane.style.opacity = ''; setTimeout(() => pane.style.transition = '', 260) }) }
+}, { passive: true });
+
+// "Your references" on the References tab: everything you sent — waiting, downloaded, studied — newest first; tap = the post
+const myRefAdded = {};
+async function loadMyRefs() {
+  const box = $('myRefs'); if (!box || !cfg().tok) return;
+  try {
+    const { repo, branch } = cfg();
+    const [j, tree] = await Promise.all([fileText('references/index.json').then(JSON.parse).catch(() => ({ cards: [] })),
+      api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`)]);
+    const paths = tree.tree.filter(t => t.type === 'blob').map(t => t.path);
+    const queued = paths.filter(p => /^references\/queue\/[^/]+\.json$/.test(p));
+    const qs = await Promise.all(queued.map(async p => { try { return { p, m: JSON.parse(await fileText(p)), err: paths.includes(p.replace(/\.json$/, '.error.txt')) } } catch { return null } }));
+    const rows = [];
+    for (const q of qs.filter(Boolean)) rows.push({ when: q.m.added || '', href: q.m.url || '', title: q.m.url || (q.m.names || [q.m.name])[0] || 'upload', state: q.err ? ['err', 'Failed — see Status'] : ['wait', 'Waiting for the download'], learn: q.m.learn_for });
+    const cards = (j.cards || []).filter(c => c.id !== 'golden-reel-v3');
+    const added = Object.fromEntries(await Promise.all(cards.map(async c => {          // the sent date lives in references/inbox/<id>.json
+      if (c.added) return [c.id, c.added];
+      if (!myRefAdded[c.id]) myRefAdded[c.id] = fileText(`references/inbox/${c.id}.json`).then(t => JSON.parse(t).added || '').catch(() => '');
+      return [c.id, await myRefAdded[c.id]];
+    })));
+    for (const c of cards) rows.push({ when: added[c.id] || '', id: c.id, href: /^https?:/.test(c.src || '') ? c.src : '', title: c.note || c.id, state: c.studied ? ['ok', 'Studied'] : ['wait', 'Downloaded · waiting for /study'], learn: c.learn_for, kind: c.kind });
+    rows.sort((a, b) => (b.when || '').localeCompare(a.when || ''));
+    $('myRefsCount').textContent = rows.length;
+    box.innerHTML = rows.map(r => `<div class="item myref"${r.href ? ` data-href="${esc(r.href)}"` : ''}><span class="dot ${r.state[0]}"></span><div style="min-width:0;flex:1">
+        <div class="t" style="font-size:14px">${esc(r.id || r.title)}${r.kind && r.kind !== 'reel' ? ` <span class="tag">${esc(r.kind)}</span>` : ''}${r.learn && r.learn !== 'auto' ? ` <span class="tag" style="background:var(--blue);color:#fff;box-shadow:none">${esc(LEARN_NAME[r.learn] || r.learn)}</span>` : ''}</div>
+        <div class="s">${esc(r.state[1])}${r.id && r.title !== r.id ? ' · “' + esc(r.title.slice(0, 60)) + '”' : ''}</div></div>${r.href ? '<span class="go2">Open ↗</span>' : ''}</div>`).join('') || '<div class="empty">Nothing sent yet.</div>';
+    box.querySelectorAll('.myref[data-href]').forEach(el => el.onclick = () => window.open(el.dataset.href, '_blank', 'noopener'));
+  } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>` }
+}
 
 // ---------- tab 1: references ----------
 const SRC = [[/(^|\.)(x|twitter)\.com$/, 'x'], [/(^|\.)instagram\.com$/, 'ig'], [/(^|\.)(youtube\.com|youtu\.be)$/, 'yt']];
@@ -626,7 +676,8 @@ function drawLibrary() {
     const kindTag = kind === 'carousel' ? `<span class="src" style="left:auto;right:58px;background:var(--blue)">CAROUSEL · ${c.slides}</span>` : kind === 'image' ? '<span class="src" style="left:auto;right:58px;background:var(--blue)">IMAGE</span>' : '';
     const stats = post && c.motion == null ? `${c.slides} slide${c.slides === 1 ? '' : 's'} · ${c.images || 0} img · ${c.videos || 0} vid`
       : `${post ? `${c.slides} slides · ` : ''}pan ${c.pan ?? '–'}% · motion ${c.motion ?? '–'} · cuts ${c.cuts ?? '–'}`;
-    return `<div class="ref"><div class="pic" data-pic="${esc(c.id)}" style="${thumbs[c.id] ? `background-image:url(${thumbs[c.id]})` : ''}">
+    const href = c.src && /^https?:/.test(c.src) ? c.src : '';
+    return `<div class="ref"><div class="pic${href ? ' open' : ''}" data-pic="${esc(c.id)}" ${href ? `data-href="${esc(href)}"` : ''} style="${thumbs[c.id] ? `background-image:url(${thumbs[c.id]})` : ''}">${href ? '<span class="go">Open ↗</span>' : ''}
         ${gold ? '<span class="gold">HOUSE REFERENCE</span>' : `<span class="src">${esc(SRCNAME[src] || src.toUpperCase())}</span>${kindTag}<button class="del" data-del="${esc(c.id)}" aria-label="Delete">🗑</button>`}</div>
       <div class="body"><div class="id">${esc(c.id)} · ${post ? kind + ' · ' : ''}${c.dur ? c.dur + 's' : ''} ${esc(c.aspect || '')}</div>
         <div class="note">${esc(c.note || (gold ? 'The golden reel' : 'No note'))}</div>
@@ -634,7 +685,8 @@ function drawLibrary() {
         ${(c.techniques || []).length ? `<ul class="tech">${c.techniques.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : `<div class="id" style="margin-top:6px">${c.studied ? '' : 'Techniques pending — run /study'}</div>`}
         <div class="meta"><span>${stats}</span>${link}</div></div></div>`;
   }).join('') || '<div class="card empty">Nothing matches.</div>';
-  $('libGrid').querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteRef(b, b.dataset.del));
+  $('libGrid').querySelectorAll('[data-del]').forEach(b => b.onclick = ev => { ev.stopPropagation(); deleteRef(b, b.dataset.del) });
+  $('libGrid').querySelectorAll('.pic[data-href]').forEach(p => p.onclick = () => window.open(p.dataset.href, '_blank', 'noopener'));
 }
 async function deleteRef(btn, id) {
   if (!armTap(btn, 'Delete?')) { msg('libMsg', 'info', `Tap <b>Delete?</b> again to delete ${esc(id)} (its video or slides, card and index entry).`); return }
