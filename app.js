@@ -169,8 +169,11 @@ async function loadMyRefs() {
   const box = $('myRefs'); if (!box || !cfg().tok) return;
   try {
     const { repo, branch } = cfg();
-    const [j, tree] = await Promise.all([fileText('references/index.json').then(JSON.parse).catch(() => ({ cards: [] })),
-      api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`)]);
+    const [j, tree, audit] = await Promise.all([fileText('references/index.json').then(JSON.parse).catch(() => ({ cards: [] })),
+      api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`), fileText('references/audit.txt').catch(() => '')]);
+    // library health (engine/reference_audit.py): learned by its agents, or exactly what's missing
+    const health = {}; audit.split('\n').forEach(l => { const m = l.match(/^([✓✗]) (\S+)\s+\S+\s+(.*)$/); if (m) health[m[2]] = [m[1] === '✓', m[3]] });
+    const head = audit.split('\n')[0] || '';
     const paths = tree.tree.filter(t => t.type === 'blob').map(t => t.path);
     const queued = paths.filter(p => /^references\/queue\/[^/]+\.json$/.test(p));
     const qs = await Promise.all(queued.map(async p => { try { return { p, m: JSON.parse(await fileText(p)), err: paths.includes(p.replace(/\.json$/, '.error.txt')) } } catch { return null } }));
@@ -182,9 +185,13 @@ async function loadMyRefs() {
       if (!myRefAdded[c.id]) myRefAdded[c.id] = fileText(`references/inbox/${c.id}.json`).then(t => JSON.parse(t).added || '').catch(() => '');
       return [c.id, await myRefAdded[c.id]];
     })));
-    for (const c of cards) rows.push({ when: added[c.id] || '', id: c.id, href: /^https?:/.test(c.src || '') ? c.src : '', title: c.note || c.id, state: c.studied ? ['ok', 'Studied'] : ['wait', 'Downloaded · waiting for /study'], learn: c.learn_for, kind: c.kind });
+    for (const c of cards) { const h = health[c.id];
+      rows.push({ when: added[c.id] || '', id: c.id, href: /^https?:/.test(c.src || '') ? c.src : '', title: c.note || c.id,
+        state: h ? (h[0] ? ['ok', 'Learned · ' + h[1].replace(/^learned · /, '')] : ['wait', 'Not learned yet: ' + h[1] + ' (next /study fixes it)']) : (c.studied ? ['ok', 'Studied'] : ['wait', 'Downloaded · waiting for /study']),
+        learn: c.learn_for, kind: c.kind }) }
     rows.sort((a, b) => (b.when || '').localeCompare(a.when || ''));
     $('myRefsCount').textContent = rows.length;
+    if (head) msg('myRefsMsg', /^PASS/.test(head) ? 'ok' : 'err', /^PASS/.test(head) ? `Library: every reference learned (${esc(head.split('·')[2] || '').trim()})` : `Library: ${esc(head.replace(/^FAIL · reference audit · /, ''))} — run /study in Claude Code to finish learning them.`);
     box.innerHTML = rows.map(r => `<div class="item myref"${r.href ? ` data-href="${esc(r.href)}"` : ''}><span class="dot ${r.state[0]}"></span><div style="min-width:0;flex:1">
         <div class="t" style="font-size:14px">${esc(r.id || r.title)}${r.kind && r.kind !== 'reel' ? ` <span class="tag">${esc(r.kind)}</span>` : ''}${r.learn && r.learn !== 'auto' ? ` <span class="tag" style="background:var(--blue);color:#fff;box-shadow:none">${esc(LEARN_NAME[r.learn] || r.learn)}</span>` : ''}</div>
         <div class="s">${esc(r.state[1])}${r.id && r.title !== r.id ? ' · “' + esc(r.title.slice(0, 60)) + '”' : ''}</div>
