@@ -674,7 +674,7 @@ function shareCarousel(ci, btn) {
 }
 
 // ---------- tab 3: library ----------
-let lib = [], libTag = '', thumbs = {};
+let lib = [], libSel = new Set(), libKind = '', libSort = 'new', libUnstudied = false, thumbs = {};   // library filters (editor 2026-11-18: newest first, filter by tag)
 const SRCNAME = { x: 'X', ig: 'IG', yt: 'YT', upload: 'FILE' };
 async function rawBlobUrl(path, type) {         // private repo: fetch the image with the token, show it as a blob URL
   const { tok, repo, branch } = cfg();
@@ -690,19 +690,34 @@ async function loadLibrary() {
   $('libCount').textContent = 'Loading…';
   try {
     const j = JSON.parse(await fileText('references/index.json'));
-    lib = (Array.isArray(j) ? j : j.cards || []).slice().sort((a, b) => (a.id === 'golden-reel-v3' ? -1 : b.id === 'golden-reel-v3' ? 1 : b.id.localeCompare(a.id)));
+    lib = (Array.isArray(j) ? j : j.cards || []).slice();
     drawLibrary();
     for (const c of lib) if (!thumbs[c.id]) rawBlobUrl(`references/cards/${c.id}/thumb.jpg`).then(u => { if (u) { thumbs[c.id] = u; const el = document.querySelector(`[data-pic="${CSS.escape(c.id)}"]`); if (el) el.style.backgroundImage = `url(${u})` } });
   } catch (e) { $('libCount').textContent = ''; msg('libMsg', 'err', e.status === 404 ? 'No library yet — add a reference first.' : esc(e.message)) }
 }
+const addedAt = c => Date.parse(c.added || c.downloaded || '') || 0;
+const fmtDay = c => { const t = addedAt(c); return t ? new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '' };
 function drawLibrary() {
   const q = $('libQ').value.trim().toLowerCase();
   const tagsOf = c => [...new Set([...(c.tags || []), ...(c.tags_studier || [])])];
-  const all = [...new Set(lib.flatMap(tagsOf))].sort();
-  $('libTags').innerHTML = all.map(t => `<button class="tag${t === libTag ? ' on' : ''}" data-t="${esc(t)}">${esc(t)}</button>`).join('');
-  $('libTags').querySelectorAll('.tag').forEach(b => b.onclick = () => { libTag = libTag === b.dataset.t ? '' : b.dataset.t; drawLibrary() });
-  const shown = lib.filter(c => (!libTag || tagsOf(c).includes(libTag)) &&
-    (!q || [c.id, c.note, ...(c.tags || []), ...(c.tags_studier || []), ...(c.techniques || [])].join(' ').toLowerCase().includes(q)));
+  const kindOf = c => c.kind || 'reel';
+  // filter row: type · not studied · newest/oldest
+  const kinds = [['', 'All'], ['reel', 'Reels'], ['carousel', 'Carousels'], ['image', 'Images']].filter(([k]) => !k || lib.some(c => kindOf(c) === k));
+  $('libFilters').innerHTML = kinds.map(([k, n]) => `<button class="tag${libKind === k ? ' on' : ''}" data-k="${k}">${n}</button>`).join('') +
+    `<button class="tag${libUnstudied ? ' on' : ''}" data-u="1">Not studied</button><button class="tag" data-s="1">${libSort === 'new' ? 'Newest first ↓' : 'Oldest first ↑'}</button>`;
+  $('libFilters').querySelectorAll('[data-k]').forEach(b => b.onclick = () => { libKind = b.dataset.k; drawLibrary() });
+  $('libFilters').querySelector('[data-u]').onclick = () => { libUnstudied = !libUnstudied; drawLibrary() };
+  $('libFilters').querySelector('[data-s]').onclick = () => { libSort = libSort === 'new' ? 'old' : 'new'; drawLibrary() };
+  // tag chips: every tag with its count, most used first; tap several to narrow (a reference must carry all of them)
+  const count = {}; lib.forEach(c => tagsOf(c).forEach(t => count[t] = (count[t] || 0) + 1));
+  const all = Object.keys(count).sort((a, b) => count[b] - count[a] || a.localeCompare(b));
+  $('libTags').innerHTML = (libSel.size ? '<button class="tag" data-clear="1">✕ Clear tags</button>' : '') +
+    all.map(t => `<button class="tag${libSel.has(t) ? ' on' : ''}" data-t="${esc(t)}">${esc(t)} <span style="opacity:.6">${count[t]}</span></button>`).join('');
+  $('libTags').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { libSel.has(b.dataset.t) ? libSel.delete(b.dataset.t) : libSel.add(b.dataset.t); drawLibrary() });
+  const clr = $('libTags').querySelector('[data-clear]'); if (clr) clr.onclick = () => { libSel.clear(); drawLibrary() };
+  const shown = lib.filter(c => [...libSel].every(t => tagsOf(c).includes(t)) && (!libKind || kindOf(c) === libKind) && (!libUnstudied || !c.studied) &&
+    (!q || [c.id, c.note, ...(c.tags || []), ...(c.tags_studier || []), ...(c.techniques || [])].join(' ').toLowerCase().includes(q)))
+    .sort((a, b) => (libSort === 'new' ? 1 : -1) * (addedAt(b) - addedAt(a)) || b.id.localeCompare(a.id));   // newest first (by the date it was added)
   $('libCount').textContent = `${lib.length} reference${lib.length === 1 ? '' : 's'}${shown.length !== lib.length ? ` · ${shown.length} shown` : ''}`;
   $('libGrid').innerHTML = shown.map(c => {
     const gold = c.id === 'golden-reel-v3', src = gold ? 'gold' : (c.id.split('-')[0] || 'web');
@@ -714,7 +729,7 @@ function drawLibrary() {
     const href = c.src && /^https?:/.test(c.src) ? c.src : '';
     return `<div class="ref"><div class="pic${href ? ' open' : ''}" data-pic="${esc(c.id)}" ${href ? `data-href="${esc(href)}"` : ''} style="${thumbs[c.id] ? `background-image:url(${thumbs[c.id]})` : ''}">${href ? '<span class="go">Open ↗</span>' : ''}
         ${gold ? '<span class="gold">HOUSE REFERENCE</span>' : `<span class="src">${esc(SRCNAME[src] || src.toUpperCase())}</span>${kindTag}<button class="del" data-del="${esc(c.id)}" aria-label="Delete">🗑</button>`}</div>
-      <div class="body"><div class="id">${esc(c.id)} · ${post ? kind + ' · ' : ''}${c.dur ? c.dur + 's' : ''} ${esc(c.aspect || '')}</div>
+      <div class="body"><div class="id">${fmtDay(c) ? `<b>${fmtDay(c)}</b> · ` : ''}${esc(c.id)} · ${post ? kind + ' · ' : ''}${c.dur ? c.dur + 's' : ''} ${esc(c.aspect || '')}</div>
         <div class="note">${esc(c.note || (gold ? 'The golden reel' : 'No note'))}</div>
         <div class="tagrow" style="margin-top:4px">${c.learn_for && c.learn_for !== 'auto' ? `<span class="tag" style="background:var(--blue);color:#fff;box-shadow:none">learns: ${esc(LEARN_NAME[c.learn_for] || c.learn_for)}</span>` : ''}${tagsOf(c).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
         ${(c.techniques || []).length ? `<ul class="tech">${c.techniques.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : `<div class="id" style="margin-top:6px">${c.studied ? '' : 'Techniques pending — run /study'}</div>`}
