@@ -611,7 +611,7 @@ function drawCarousels() {
       <div class="body"><div class="note" style="font-size:15px">${esc(c.title || c.slug)}</div>
         <div class="tagrow" style="margin-top:2px"><span class="tag">${c.slides.length} slides</span><span class="tag">${esc(c.theme || '')}</span></div>
         <div class="meta"><span>${esc(c.slug)} · audit ${st(c.audit)}</span></div>
-        <div class="acts"><button class="btn primary small" data-share="${ci}">Share / Save</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
+        <div class="acts"><button class="btn primary small" data-share="${ci}">${ready[cars[ci].slug + cars[ci].rendered] ? `Open share sheet · ${cars[ci].slides.length} ready` : 'Post to Instagram'}</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
         <div class="msg" id="carMsg${ci}"></div></div></div>`).join('');
   cars.forEach((c, ci) => c.slides.forEach((s, i) => {
     const key = c.slug + '/' + i, el = document.querySelector(`.sl[data-ci="${ci}"][data-si="${i}"]`);
@@ -638,26 +638,39 @@ function drawCarousels() {
   });
   document.querySelectorAll('[data-share]').forEach(b => b.onclick = () => shareCarousel(+b.dataset.share, b));
 }
-// full-size slides → the phone's share sheet (Save to Photos, or straight into Instagram); downloads where sharing files isn't supported
-async function shareCarousel(ci, btn) {
-  const c = cars[ci], id = 'carMsg' + ci; btn.disabled = true;
-  try {
-    const files = [];
-    for (let i = 0; i < c.slides.length; i++) {
-      const s = c.slides[i], path = s.full || s.src, ext = path.split('.').pop(), type = ext === 'mp4' ? 'video/mp4' : ext === 'png' ? 'image/png' : 'image/jpeg';
-      msg(id, 'info', `Getting slide ${i + 1} of ${c.slides.length}…`);
-      files.push(new File([await rawFile(path, type)], `${c.slug}-${String(i + 1).padStart(2, '0')}.${ext}`, { type }));
-    }
+// full-size slides → the phone's share sheet (Instagram → Feed, or Save to Photos/Files); downloads where sharing files isn't supported.
+// Two taps, by design: Chrome only allows navigator.share() inside the tap that asked for it, and fetching 6 slides from GitHub
+// takes longer than that window ("Must be handling a user gesture"). Tap 1 fetches the slides; tap 2 opens the sheet instantly
+// and copies the caption at the same moment, so in Instagram you only paste it.
+const ready = {};                                   // slug + rendered → [File, …] (full-size slides, in order)
+async function prepareCarousel(c, id) {
+  const files = [];
+  for (let i = 0; i < c.slides.length; i++) {
+    const s = c.slides[i], path = s.full || s.src, ext = path.split('.').pop(), type = ext === 'mp4' ? 'video/mp4' : ext === 'png' ? 'image/png' : 'image/jpeg';
+    msg(id, 'info', `Getting slide ${i + 1} of ${c.slides.length}…`);
+    files.push(new File([await rawFile(path, type)], `${c.slug}-${String(i + 1).padStart(2, '0')}.${ext}`, { type }));
+  }
+  return files;
+}
+function shareCarousel(ci, btn) {
+  const c = cars[ci], id = 'carMsg' + ci, key = c.slug + c.rendered, files = ready[key];
+  if (files) {                                      // tap 2 — no await before share(): we're still inside the tap
     if (navigator.canShare && navigator.canShare({ files })) {
-      clearMsg(id);
-      await navigator.share({ files, title: c.title || c.slug });
-      msg(id, 'ok', 'Shared. On Instagram, pick the slides in this order (01 first).');
+      const p = navigator.share({ files, title: c.title || c.slug });
+      if (c.caption && navigator.clipboard) navigator.clipboard.writeText(c.caption).catch(() => {});
+      msg(id, 'info', c.caption ? 'Caption copied. Pick Instagram → Feed; the slides arrive in order (01 first). Paste the caption.' : 'Pick Instagram → Feed; the slides arrive in order (01 first).');
+      p.then(() => msg(id, 'ok', 'Shared. In Instagram: Next → paste the caption → Share.')).catch(e => { if (e && e.name === 'AbortError') clearMsg(id); else msg(id, 'err', esc(e.message || String(e))) });
     } else {
-      for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)) }
-      msg(id, 'ok', `Downloaded ${files.length} files (01 first).`);
+      (async () => { for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)) }
+        msg(id, 'ok', `Downloaded ${files.length} files (01 first).`) })();
     }
-  } catch (e) { if (e && e.name === 'AbortError') clearMsg(id); else msg(id, 'err', esc(e.message || String(e))) }
-  btn.disabled = false;
+    return;
+  }
+  btn.disabled = true;                              // tap 1 — fetch the slides, then ask for the second tap
+  prepareCarousel(c, id).then(f => {
+    ready[key] = f; btn.disabled = false; btn.textContent = `Open share sheet · ${f.length} ready`;
+    msg(id, 'ok', `${f.length} slides ready. Tap “Open share sheet”.`);
+  }).catch(e => { btn.disabled = false; msg(id, 'err', esc(e.message || String(e))) });
 }
 
 // ---------- tab 3: library ----------
