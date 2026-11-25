@@ -1,4 +1,4 @@
-// RM Inbox — feeds the Rupee Mechanics studio through the GitHub REST API.
+// Rupee Mechanics (RM Inbox) — feeds the Rupee Mechanics studio through the GitHub REST API.
 // The token lives only in this browser's localStorage and is sent only to api.github.com.
 'use strict';
 const $ = id => document.getElementById(id);
@@ -143,25 +143,53 @@ function showTab(t) {
 }
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
-// swipe left / right anywhere on a tab to move to the next / previous tab (phone). Ignored inside things that scroll
-// sideways (carousel strips), text fields, selects and videos, and for mostly-vertical drags.
+// swipe left / right anywhere on a tab to move to the next / previous tab (phone). The page follows the finger once the
+// drag is clearly sideways, so it's easy to start anywhere on the body — over cards, text fields (unless you're typing
+// in one) and thumbnails. Ignored only inside the carousel strips (they scroll sideways), videos (scrubbing) and selects.
 const TABS = [...document.querySelectorAll('.tabs button')].map(b => b.dataset.tab);
 let sw = null;
+const curPane = () => document.querySelector(`[data-pane="${store.get(K.tab) || 'refs'}"]`);
 document.addEventListener('touchstart', e => {
   const t = e.target;
-  if (e.touches.length !== 1 || t.closest('input,textarea,select,video,.strip,.thumbs,[data-noswipe]')) { sw = null; return }
-  sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() };
+  if (e.touches.length !== 1 || !cfg().tok || t.closest('select,video,.strip,[data-noswipe]') ||
+    (t.closest('input,textarea') && t.closest('input,textarea') === document.activeElement)) { sw = null; return }
+  sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now(), axis: '', dx: 0, pane: curPane() };
 }, { passive: true });
+document.addEventListener('touchmove', e => {
+  if (!sw) return;
+  if (e.touches.length !== 1) { springBack(); sw = null; return }
+  const dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+  if (!sw.axis) {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    sw.axis = Math.abs(dx) > Math.abs(dy) * 1.1 ? 'x' : 'y';
+    if (sw.axis === 'y') { sw = null; return }
+  }
+  if (e.cancelable) e.preventDefault();                       // sideways drag is ours: no page drift
+  const i = TABS.indexOf(store.get(K.tab) || 'refs'), edge = (dx > 0 && i === 0) || (dx < 0 && i === TABS.length - 1);
+  sw.dx = dx;
+  if (sw.pane) { sw.pane.style.transition = ''; sw.pane.style.transform = `translateX(${dx * (edge ? 0.15 : 0.45)}px)`; sw.pane.style.opacity = String(1 - Math.min(0.35, Math.abs(dx) / 900)) }
+}, { passive: false });
+function springBack() {
+  const p = sw && sw.pane; if (!p) return;
+  p.style.transition = 'transform .2s cubic-bezier(.2,.8,.2,1), opacity .2s'; p.style.transform = ''; p.style.opacity = '';
+  setTimeout(() => p.style.transition = '', 220);
+}
+document.addEventListener('touchcancel', () => { springBack(); sw = null }, { passive: true });
 document.addEventListener('touchend', e => {
-  if (!sw || !cfg().tok) return;
-  const dx = e.changedTouches[0].clientX - sw.x, dy = e.changedTouches[0].clientY - sw.y, dt = Date.now() - sw.at; sw = null;
-  if (Math.abs(dx) < 70 || Math.abs(dx) < 1.6 * Math.abs(dy) || dt > 700) return;
+  if (!sw) return;
+  const s = sw; sw = null;
+  if (s.axis !== 'x') return;
+  const dx = e.changedTouches[0].clientX - s.x, dt = Math.max(1, Date.now() - s.at), fast = Math.abs(dx) / dt > 0.35;
   const i = TABS.indexOf(store.get(K.tab) || 'refs'), j = i + (dx < 0 ? 1 : -1);
-  if (j < 0 || j >= TABS.length) return;
+  if ((Math.abs(dx) < 45 && !(fast && Math.abs(dx) > 20)) || j < 0 || j >= TABS.length) { sw = s; springBack(); sw = null; return }
+  if (s.pane) { s.pane.style.transform = ''; s.pane.style.opacity = '' }
   showTab(TABS[j]); window.scrollTo({ top: 0 });
   const pane = document.querySelector(`[data-pane="${TABS[j]}"]`);
-  if (pane) { pane.style.transform = `translateX(${dx < 0 ? 24 : -24}px)`; pane.style.opacity = '.6'; requestAnimationFrame(() => { pane.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1), opacity .22s'; pane.style.transform = ''; pane.style.opacity = ''; setTimeout(() => pane.style.transition = '', 260) }) }
+  if (pane) { pane.style.transition = ''; pane.style.transform = `translateX(${dx < 0 ? 40 : -40}px)`; pane.style.opacity = '.5'; requestAnimationFrame(() => requestAnimationFrame(() => { pane.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1), opacity .22s'; pane.style.transform = ''; pane.style.opacity = ''; setTimeout(() => pane.style.transition = '', 260) })) }
 }, { passive: true });
+// feels like an app: no pinch zoom (iOS ignores user-scalable=no in Safari); double-tap zoom is off via touch-action in the CSS
+['gesturestart', 'gesturechange'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
+document.addEventListener('touchmove', e => { if (e.touches.length > 1 && e.cancelable) e.preventDefault() }, { passive: false });
 
 // "Your references" on the References tab: everything you sent — waiting, downloaded, studied — newest first; tap = the post
 const myRefAdded = {};
@@ -312,12 +340,26 @@ $('sendVid').onclick = async () => {
 
 // ---------- tab 2: news ----------
 let shots = []; // [{blob, url}]
-let slugTouched = false;
-$('story').oninput = () => { if (!slugTouched) $('slug').value = slugify($('story').value); validateNews() };
-$('slug').oninput = () => { slugTouched = $('slug').value !== ''; validateNews() };
-$('slug').onblur = () => $('slug').value = slugify($('slug').value);
+// the folder name comes from the article link (its last meaningful path part), else the date and time
+function newsSlug() {
+  let base = '';
+  try {
+    const u = new URL($('aurl').value.trim());
+    const parts = u.pathname.split('/').map(p => { try { return decodeURIComponent(p) } catch { return p } }).map(p => p.replace(/\.(s?html?|php|aspx?|cms)$/i, ''))
+      .filter(p => /[a-z]{3,}/i.test(p) && !/^(amp|news|article|articles|articleshow|story|stories|index)$/i.test(p));
+    const best = (parts.sort((x, y) => y.split(/[-_]/).length - x.split(/[-_]/).length)[0] || '').replace(/[-_]?\d{5,}[-_\w]*$/, '').replace(/[-_]\d+$/, '');
+    const words = slugify(best.replace(/_/g, '-').slice(0, 200)).split('-').filter(Boolean);
+    while (words.length > 1 && words.join('-').length > 48) words.pop();        // whole words only
+    base = words.join('-').slice(0, 48);
+    if (!base) base = slugify(u.hostname.replace(/^www\./, '').split('.')[0]);
+  } catch {}
+  if (base) return base;
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  return `news-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`;
+}
+const newsTitle = slug => /^news-\d/.test(slug) ? '' : slug.replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
 $('aurl').oninput = validateNews;
-function validateNews() { $('sendNews').disabled = !(shots.length && slugify($('slug').value)) }
+function validateNews() { $('sendNews').disabled = !shots.length }
 
 async function compress(file) {
   const bmp = await createImageBitmap(file);
@@ -359,21 +401,24 @@ document.addEventListener('paste', e => {
 });
 const blobB64 = b => readB64(b);
 $('sendNews').onclick = async () => {
-  const slug = slugify($('slug').value), btn = $('sendNews'); if (!slug || !shots.length) return;
+  const btn = $('sendNews'); if (!shots.length) return;
   btn.disabled = true; clearMsg('newsMsg');
   try {
-    const { repo, branch } = cfg();
-    const existing = await api(`/repos/${repo}/contents/news/inbox/${slug}?ref=${encodeURIComponent(branch)}`).catch(e => { if (e.status === 404) return null; throw e });
-    if (existing && !armTap(btn, 'Tap again to replace')) { msg('newsMsg', 'info', `<code>news/inbox/${esc(slug)}</code> already exists. Tap again to save these screenshots into it (same-named files are replaced).`); btn.disabled = false; return }
+    const { repo, branch } = cfg(), base = newsSlug();
+    let slug = base;                                    // never overwrite an earlier story: base, base-2, base-3, …
+    for (let n = 2; n < 50; n++) {
+      const existing = await api(`/repos/${repo}/contents/news/inbox/${slug}?ref=${encodeURIComponent(branch)}`).catch(e => { if (e.status === 404) return null; throw e });
+      if (!existing) break; slug = `${base}-${n}`;
+    }
     const names = shots.map((_, i) => String(i + 1).padStart(2, '0') + '.jpg');
     const files = [];
     for (let i = 0; i < shots.length; i++) files.push({ path: `news/inbox/${slug}/${names[i]}`, b64: await blobB64(shots[i].blob) });
-    const meta = { story: $('story').value.trim(), url: $('aurl').value.trim(), notes: $('notes').value.trim(), images: names, added: new Date().toISOString() };
+    const meta = { story: newsTitle(slug), url: $('aurl').value.trim(), notes: '', images: names, added: new Date().toISOString() };
     files.push({ path: `news/inbox/${slug}/meta.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') });
     await commitFiles(files, `inbox: news ${slug} (${shots.length} screenshot${shots.length > 1 ? 's' : ''})`, p => bar('newsBar', p));
-    msg('newsMsg', 'ok', `Saved to <code>news/inbox/${esc(slug)}/</code> in one commit. Run <code>/reel ${esc(slug)}</code> when ready.`);
+    msg('newsMsg', 'ok', `Saved to <code>news/inbox/${esc(slug)}/</code>. Run <code>/reel ${esc(slug)}</code> when ready.`);
     shots.forEach(s => URL.revokeObjectURL(s.url)); shots = []; drawThumbs();
-    ['story', 'slug', 'aurl', 'notes'].forEach(id => $(id).value = ''); slugTouched = false;
+    $('aurl').value = '';
   } catch (e) { msg('newsMsg', 'err', esc(e.message)); btn.disabled = false }
   bar('newsBar', null);
 };
@@ -674,7 +719,7 @@ function shareCarousel(ci, btn) {
 }
 
 // ---------- tab 3: library ----------
-let lib = [], libSel = new Set(), libKind = '', libSort = 'new', libUnstudied = false, thumbs = {};   // library filters (editor 2026-11-18: newest first, filter by tag)
+let lib = [], libSel = new Set(), libKind = '', libSort = 'new', libUnstudied = false, libTagsOpen = false, thumbs = {};   // library filters (editor 2026-11-18: newest first, filter by tag)
 const SRCNAME = { x: 'X', ig: 'IG', yt: 'YT', upload: 'FILE' };
 async function rawBlobUrl(path, type) {         // private repo: fetch the image with the token, show it as a blob URL
   const { tok, repo, branch } = cfg();
@@ -709,8 +754,14 @@ function drawLibrary() {
   $('libFilters').querySelector('[data-u]').onclick = () => { libUnstudied = !libUnstudied; drawLibrary() };
   $('libFilters').querySelector('[data-s]').onclick = () => { libSort = libSort === 'new' ? 'old' : 'new'; drawLibrary() };
   // tag chips: every tag with its count, most used first; tap several to narrow (a reference must carry all of them)
+  // hidden until "Tags" is tapped (editor 2026-11-25: too many chips on open); chosen tags always stay visible
   const count = {}; lib.forEach(c => tagsOf(c).forEach(t => count[t] = (count[t] || 0) + 1));
-  const all = Object.keys(count).sort((a, b) => count[b] - count[a] || a.localeCompare(b));
+  const all = Object.keys(count).sort((a, b) => count[b] - count[a] || a.localeCompare(b)).filter(t => libTagsOpen || libSel.has(t));
+  if (Object.keys(count).length) {
+    $('libFilters').insertAdjacentHTML('beforeend', `<button class="tag tagbtn${libTagsOpen ? ' on' : ''}" data-tt="1">Tags${libSel.size ? ' · ' + libSel.size : ''} ${libTagsOpen ? '▴' : '▾'}</button>`);
+    $('libFilters').querySelector('[data-tt]').onclick = () => { libTagsOpen = !libTagsOpen; drawLibrary() };
+  }
+  $('libTags').classList.toggle('hide', !all.length && !libSel.size);
   $('libTags').innerHTML = (libSel.size ? '<button class="tag" data-clear="1">✕ Clear tags</button>' : '') +
     all.map(t => `<button class="tag${libSel.has(t) ? ' on' : ''}" data-t="${esc(t)}">${esc(t)} <span style="opacity:.6">${count[t]}</span></button>`).join('');
   $('libTags').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { libSel.has(b.dataset.t) ? libSel.delete(b.dataset.t) : libSel.add(b.dataset.t); drawLibrary() });
@@ -777,7 +828,7 @@ drawQuick();
 ['sendLinks', 'sendVid'].forEach(id => $(id).addEventListener('click', () => setTimeout(drawQuick, 1500)));
 
 // ---------- share button: Android (installed page in the Share menu) and iPhone (a Shortcut opening ?url=…) ----------
-// The phone opens RM Inbox with ?url= / ?text= / ?title=. We keep the link until a token exists, put it in Links and
+// The phone opens Rupee Mechanics with ?url= / ?text= / ?title=. We keep the link until a token exists, put it in Links and
 // leave one tap ("Send to studio"), so a stray reload never sends twice.
 const SHARE_KEY = 'rm.shared';
 function takeShared() {

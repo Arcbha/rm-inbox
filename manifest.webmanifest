@@ -1,6 +1,6 @@
 {
-  "name": "RM Inbox",
-  "short_name": "RM Inbox",
+  "name": "Rupee Mechanics",
+  "short_name": "Rupee Mechanics",
   "description": "Send references and news to the Rupee Mechanics studio.",
   "start_url": "./",
   "scope": "./",
@@ -8,6 +8,7 @@
   "background_color": "#eef0f5",
   "theme_color": "#eef0f5",
   "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
