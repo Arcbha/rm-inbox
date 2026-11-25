@@ -1,4 +1,4 @@
-// RM Inbox — feeds the Rupee Mechanics studio through the GitHub REST API.
+// Rupee Mechanics (RM Inbox) — feeds the Rupee Mechanics studio through the GitHub REST API.
 // The token lives only in this browser's localStorage and is sent only to api.github.com.
 'use strict';
 const $ = id => document.getElementById(id);
@@ -828,7 +828,7 @@ drawQuick();
 ['sendLinks', 'sendVid'].forEach(id => $(id).addEventListener('click', () => setTimeout(drawQuick, 1500)));
 
 // ---------- share button: Android (installed page in the Share menu) and iPhone (a Shortcut opening ?url=…) ----------
-// The phone opens RM Inbox with ?url= / ?text= / ?title=. We keep the link until a token exists, put it in Links and
+// The phone opens Rupee Mechanics with ?url= / ?text= / ?title=. We keep the link until a token exists, put it in Links and
 // leave one tap ("Send to studio"), so a stray reload never sends twice.
 const SHARE_KEY = 'rm.shared';
 function takeShared() {
