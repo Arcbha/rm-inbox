@@ -832,6 +832,7 @@ async function loadPlan() {
     const { repo, branch } = cfg();
     const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
     const paths = planPaths = tree.tree.filter(t => t.type === 'blob').map(t => t.path);
+    loadNow(paths).catch(e => msg('nowMsg', 'err', esc(e.message)));
     const errOf = p => paths.includes(p.replace(/\.json$/, '.error.txt'));
     // pre-market switch
     const rec = paths.includes('studio/schedule/recurring.json') ? await jsonAt('studio/schedule/recurring.json') : null;
@@ -871,6 +872,66 @@ $('pmToggle').onclick = async () => {
     msg('pmMsg', 'ok', turnOn ? 'On — the next market morning at 7:45 IST builds it.' : 'Off — no pre-market post until you turn it on again.');
   } catch (e) { msg('pmMsg', 'err', esc(e.message)) }
   await loadPlan();
+};
+
+// "Top 5 now": a request file → Finance_Repo's market-now Action runs Claude Code → news/morning/<date>/brief-<HHMM>.json
+let nowTimer = null, nowBrief = null;
+async function loadNow(paths) {
+  clearTimeout(nowTimer);
+  const reqs = paths.filter(p => /^studio\/schedule\/now\/[^/]+\.json$/.test(p)).sort().reverse();
+  const last = reqs.length ? await jsonAt(reqs[0]) : null;
+  const busy = last && (last.status === 'pending' || last.status === 'running' || !last.status);
+  $('nowGo').disabled = !!busy; $('nowGo').textContent = busy ? 'Working…' : 'Top 5 now';
+  if (busy) {
+    const mins = Math.max(0, Math.round((Date.now() - Date.parse(last.added)) / 60000));
+    msg('nowMsg', 'info', last.status === 'running' ? `Claude is reading the news… (${mins} min so far, about 3 in all)` : `Waiting for GitHub to start the run… (${mins} min)${mins > 4 ? ' — taking long: check the market-now run in GitHub → Actions' : ''}`);
+    if (store.get(K.tab) === 'plan') nowTimer = setTimeout(loadPlan, 15000);
+  } else if (last && last.status === 'failed') msg('nowMsg', 'err', esc(last.error || 'The run failed.'));
+  else clearMsg('nowMsg');
+  // newest finished brief (from any request)
+  for (const r of reqs.slice(0, 6)) {
+    const m = r === reqs[0] ? last : await jsonAt(r);
+    if (m && m.status === 'done' && m.result) { const b = await jsonAt(m.result); if (b) { drawBrief(b, m.result); return } }
+  }
+  $('nowBrief').innerHTML = '';
+}
+function drawBrief(b, path) {
+  nowBrief = { b, path };
+  const host = u => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return '' } };
+  $('nowBrief').innerHTML = `<div class="when">${esc(b.date)} · ${esc(b.time_ist)} IST · ${esc(b.market_phase)}</div><div class="head">${esc(b.headline || '')}</div>
+    <ol>${(b.points || []).map(p => `<li><b>${esc(p.title)}</b><div class="w">${esc(p.what)}</div><div class="y">${esc(p.why)}</div>
+      ${(p.watch || []).length ? `<div class="tagrow" style="margin-top:4px">${p.watch.map(w => `<span class="tag">${esc(w)}</span>`).join('')}</div>` : ''}
+      <div class="srcs">${(p.sources || []).map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.outlet || host(s.url))} ↗</a>`).join('')}</div></li>`).join('')}</ol>
+    <div class="row"><button class="btn ghost small" id="nowPost">Make it a carousel</button><button class="btn ghost small" id="nowCopy">Copy</button></div>`;
+  $('nowPost').onclick = () => briefToPost($('nowPost'));
+  $('nowCopy').onclick = async () => {
+    const t = `${b.headline}\n\n` + (b.points || []).map((p, i) => `${i + 1}. ${p.title} — ${p.what} ${p.why}`).join('\n');
+    try { await navigator.clipboard.writeText(t); $('nowCopy').textContent = 'Copied' } catch { $('nowCopy').textContent = 'Copy failed' }
+  };
+}
+async function briefToPost(btn) {
+  if (!nowBrief) return;
+  btn.disabled = true;
+  const d = new Date(Date.now() + 5.5 * 3600e3).toISOString(), at = `${d.slice(0, 10)} ${d.slice(11, 16)}`;
+  const links = (nowBrief.b.points || []).map(p => ((p.sources || [])[0] || {}).url).filter(Boolean);
+  try {
+    await commitFiles([{ path: `studio/schedule/queue/sched-${Date.now()}.json`, b64: b64utf8(JSON.stringify({ kind: 'carousel', run_at: at, tz: 'Asia/Kolkata', links,
+      brief: `Carousel from the Top 5 brief ${nowBrief.path}: the five points, one slide each, in that order.`, artwork: [], added: new Date().toISOString() }, null, 2) + '\n') }],
+      'rm-inbox: carousel from the Top 5 brief');
+    msg('nowMsg', 'ok', 'Scheduled as a carousel — it starts at the studio’s next check (7:45, 12:45, 5:45 or 9:45 pm IST) and lands in Studio. See Coming up.');
+    setTimeout(loadPlan, 2500);
+  } catch (e) { msg('nowMsg', 'err', esc(e.message)); btn.disabled = false }
+}
+$('nowGo').onclick = async () => {
+  const btn = $('nowGo'); btn.disabled = true; btn.textContent = 'Sending…'; clearMsg('nowMsg');
+  try {
+    const d = new Date(Date.now() + 5.5 * 3600e3).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    await commitFiles([{ path: `studio/schedule/now/now-${d}.json`, b64: b64utf8(JSON.stringify({ mode: 'brief', note: $('nowNote').value.trim(), added: new Date().toISOString(), status: 'pending', by: 'rm-inbox' }, null, 2) + '\n') }],
+      'rm-inbox: top 5 now');
+    $('nowNote').value = '';
+    msg('nowMsg', 'info', 'Sent. GitHub starts the run in a few seconds; the 5 points appear here in about 3 minutes.');
+    setTimeout(loadPlan, 4000);
+  } catch (e) { msg('nowMsg', 'err', esc(e.message)); btn.disabled = false; btn.textContent = 'Top 5 now' }
 };
 
 // save artwork
