@@ -29,9 +29,9 @@ h1{display:flex;align-items:center;gap:10px}
 h1 span{color:var(--blue)}
 h1 .logo{width:34px;height:34px;flex:none;border-radius:10px;box-shadow:0 6px 16px rgba(10,92,255,.3)}
 .who{font-size:13px;color:var(--sub);text-align:right}
-.tabs{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1.35fr 1fr 1fr 1fr 1fr;gap:2px;padding:4px;border-radius:16px;
+.tabs{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 1fr;gap:2px;padding:4px;border-radius:16px;
   background:rgba(255,255,255,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:var(--shadow);margin-bottom:16px}
-.tabs button{border:0;background:none;font:inherit;font-weight:600;font-size:13px;letter-spacing:-.01em;color:var(--sub);padding:11px 0;border-radius:12px;white-space:nowrap}
+.tabs button{border:0;background:none;font:inherit;font-weight:600;font-size:12.5px;letter-spacing:-.01em;color:var(--sub);padding:11px 0;border-radius:12px;white-space:nowrap}
 .tabs button[aria-selected=true]{background:var(--ink);color:#fff}
 .card{background:var(--surf);border-radius:22px;box-shadow:var(--shadow);padding:18px;margin-bottom:14px}
 .card h2{font-size:17px;font-weight:600;letter-spacing:-.01em;margin-bottom:4px}
@@ -147,6 +147,29 @@ input[type=file]::file-selector-button{font:inherit;font-weight:600;color:var(--
 @media (min-width:720px){.reels{grid-template-columns:1fr 1fr 1fr}}
 .slim{justify-content:space-between;margin:0 4px 12px}
 .ok{color:var(--gain)}.bad{color:var(--loss)}
+/* plan tab: morning post, artwork shelf, scheduled posts */
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.two>div{min-width:0}
+.two select.learn{padding-right:34px;text-overflow:ellipsis}
+.two label{margin-top:10px}
+input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;min-height:46px;min-width:0;max-width:100%;display:block}
+.switch{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.switch .btn{flex:none}
+.pill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:6px;padding:2px 7px;background:rgba(13,18,34,.07);color:var(--sub)}
+.pill.on{background:rgba(31,157,107,.12);color:#126b48}.pill.off{background:rgba(255,59,48,.08);color:#b4241b}
+.shelf{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:4px}
+@media (min-width:520px){.shelf{grid-template-columns:repeat(3,1fr)}}
+.art{background:#fff;border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+.art .ap{aspect-ratio:4/5;background:#dfe3ec center/cover no-repeat;position:relative}
+.art .ap .pill{position:absolute;left:8px;top:8px;background:rgba(13,18,34,.78);color:#fff}
+.art .ab{padding:8px 10px 10px;font-size:12px;color:var(--sub)}
+.art .ab b{display:block;color:var(--ink);font-size:13px;margin-bottom:2px;word-break:break-word}
+.art .ab .btn{margin-top:6px;width:100%}
+.picks{display:flex;flex-wrap:wrap;gap:6px}
+.picks .tag{display:flex;align-items:center;gap:6px;padding:4px 10px 4px 4px}
+.picks .tag img{width:28px;height:35px;object-fit:cover;border-radius:6px;background:#dfe3ec}
+.prev{margin-top:12px;max-width:180px;border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+.prev img,.prev video{display:block;width:100%}
 code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 5px}
 </style>
 </head>
@@ -178,6 +201,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <button role="tab" data-tab="news" aria-selected="false">News</button>
       <button role="tab" data-tab="library" aria-selected="false">Library</button>
       <button role="tab" data-tab="studio" aria-selected="false">Studio</button>
+      <button role="tab" data-tab="plan" aria-selected="false">Plan</button>
       <button role="tab" data-tab="status" aria-selected="false">Status</button>
     </nav>
 
@@ -225,12 +249,14 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
     <section data-pane="news" class="hide">
       <div class="card">
         <h2>News</h2>
-        <p class="hint">Just the screenshots and the article link — the folder is named for you.</p>
+        <p class="hint">The article link, screenshots, or both — the folder is named for you. A link alone is enough: the studio reads the story from the page (Mint, ET and most news sites). Paywalled? Add screenshots too.</p>
         <div class="drop" id="drop">Paste, drop here, or <b>choose screenshots</b>
           <input id="imgs" type="file" accept="image/*" multiple class="hide"></div>
         <div class="thumbs" id="thumbs"></div>
         <label for="aurl">Article URL</label>
         <input id="aurl" type="url" inputmode="url" placeholder="https://…" autocapitalize="off" spellcheck="false">
+        <label for="nkind">Make a</label>
+        <select id="nkind" class="learn"><option value="">Decide later</option><option value="reel">Reel</option><option value="carousel">Carousel</option><option value="poster">Poster</option></select>
         <div style="height:14px"></div>
         <button class="btn primary" id="sendNews" disabled>Send story</button>
         <div class="bar" id="newsBar"><i></i></div>
@@ -262,7 +288,62 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="reels" id="reelGrid"></div>
     </section>
 
-    <!-- Tab 5: status -->
+    <!-- Tab 5: plan — artwork for later posts, posts scheduled for later, the pre-market post (Finance_Repo studio/schedule/README.md) -->
+    <section data-pane="plan" class="hide">
+      <div class="card">
+        <div class="switch"><div><h2>Pre-market post</h2><p class="hint" id="pmHint" style="margin:0">—</p></div>
+          <button class="btn ghost small" id="pmToggle" disabled>…</button></div>
+        <div class="msg" id="pmMsg"></div>
+      </div>
+
+      <div class="card">
+        <h2>Save artwork</h2>
+        <p class="hint">A picture (or short video, or PDF) for a later post — tomorrow's morning cover, a WILD slide, anything. The original file is kept as it is.</p>
+        <div class="drop" id="artDrop">Paste, drop here, or <b>choose a file</b>
+          <input id="artFile" type="file" accept="image/*,video/*,application/pdf" class="hide"></div>
+        <div class="prev hide" id="artPrev"></div>
+        <label for="artWhen">Use for</label>
+        <select id="artWhen" class="learn"><option value="next">The next morning post</option><option value="date">A post on a date</option><option value="keep">Just keep it on the shelf</option></select>
+        <div id="artDateWrap" class="hide"><label for="artDate">Date</label><input id="artDate" type="date"></div>
+        <div class="two">
+          <div><label for="artSlot">Post</label><select id="artSlot" class="learn"><option value="premarket">Pre-market post</option><option value="any">Any post</option></select></div>
+          <div><label for="artFor">Use as</label><select id="artFor" class="learn"><option value="cover">Cover</option><option value="wild">WILD slide</option><option value="slide">A slide</option><option value="any">Claude decides</option></select></div>
+        </div>
+        <label for="artTitle">Title</label>
+        <input id="artTitle" placeholder="bull vs bear poster">
+        <label for="artNote">Note</label>
+        <textarea id="artNote" placeholder="what to do with it: make it the cover, keep the red, crop to the face…" style="min-height:72px"></textarea>
+        <div style="height:14px"></div>
+        <button class="btn primary" id="artSend" disabled>Save artwork</button>
+        <div class="bar" id="artBar"><i></i></div>
+        <div class="msg" id="artMsg"></div>
+      </div>
+
+      <div class="card">
+        <h2>Schedule a post</h2>
+        <p class="hint">The studio starts building it at that time (it checks at 7:45, 12:45, 5:45 and 9:45 pm IST) and tells you when the preview is in Studio. It never posts by itself.</p>
+        <label for="schKind">Make a</label>
+        <select id="schKind" class="learn"><option value="carousel">Carousel</option><option value="poster">Poster</option><option value="reel">Reel (visuals, no voice)</option><option value="custom">Something else (say it in the brief)</option></select>
+        <div class="two">
+          <div><label for="schDate">Date</label><input id="schDate" type="date"></div>
+          <div><label for="schTime">Time (IST)</label><input id="schTime" type="time" value="07:45"></div>
+        </div>
+        <label for="schLinks">Story link(s)</label>
+        <textarea id="schLinks" placeholder="https://… (the first is the story; more links = second sources)" style="min-height:72px" autocapitalize="off" spellcheck="false"></textarea>
+        <label for="schBrief">Brief</label>
+        <textarea id="schBrief" placeholder="angle, what you want it to say, the mood…" style="min-height:72px"></textarea>
+        <label>Artwork from the shelf</label>
+        <div class="picks" id="schArt"><div class="empty">Nothing on the shelf yet.</div></div>
+        <div style="height:14px"></div>
+        <button class="btn primary" id="schSend" disabled>Schedule</button>
+        <div class="msg" id="schMsg"></div>
+      </div>
+
+      <div class="card sec"><h3><span>Coming up</span><span id="upCount"></span></h3><div class="msg" id="upMsg"></div><div id="upList"><div class="empty">Loading…</div></div></div>
+      <div class="card sec"><h3><span>Artwork shelf</span><span id="shelfCount"></span></h3><div class="msg" id="shelfMsg"></div><div class="shelf" id="shelf"></div></div>
+    </section>
+
+    <!-- Tab 6: status -->
     <section data-pane="status" class="hide">
       <div class="card"><div class="row" style="justify-content:space-between">
         <div><h2>Studio status</h2><p class="hint" id="stamp" style="margin:0">—</p></div>
