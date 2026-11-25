@@ -24,3 +24,4 @@ Carousels rendered by `engine/carousel.py` appear above the reels: swipe the sli
 - **Coming up** and **Artwork shelf** read `studio/schedule/items/` and `studio/artwork/*/art.json` (cancel / remove from there).
 
 Finance_Repo's news Action files the queues (`engine/schedule.py ingest`) and the RM scheduler task runs them. News links alone are enough on the News tab (the studio reads the article).
+- **Market now → Top 5 now** — one tap (optional focus note): Finance_Repo's `market-now` Action runs Claude Code on the news and the 5 points for this moment appear here in about 3 minutes; *Make it a carousel* schedules a post from them. Needs the `CLAUDE_CODE_OAUTH_TOKEN` secret on Finance_Repo once (`claude setup-token`).
