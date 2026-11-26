@@ -113,7 +113,7 @@ function boot() {
   $('setup').classList.toggle('hide', on); $('app').classList.toggle('hide', !on);
   $('repoLbl').textContent = on ? `${c.repo} · ${c.branch}` : '';
   $('who').textContent = '';
-  if (on) { showTab(store.get(K.tab) || 'refs'); api('/user').then(u => $('who').textContent = '@' + u.login).catch(() => {}) }
+  if (on) { showTab(store.get(K.tab) || 'today'); api('/user').then(u => $('who').textContent = '@' + u.login).catch(() => {}) }
 }
 $('connect').onclick = async () => {
   const tok = $('tok').value.trim(), repo = $('repo').value.trim().replace(/^https:\/\/github\.com\//, '').replace(/\/$/, ''), branch = $('branch').value.trim() || 'main';
@@ -130,26 +130,47 @@ $('connect').onclick = async () => {
 $('forget').onclick = () => { if (armTap($('forget'), 'Tap again to forget')) { store.del(K.tok); boot() } };
 
 // ---------- tabs ----------
+// five tabs (2026-11-26 refresh): Today · Add · Saved · Studio · More; Add and More have sections (chips)
 let statusTimer = null;
+const TITLE = { today: 'Today', add: 'Add', saved: 'Saved', studio: 'Studio', more: 'More' };
+const OLDTAB = { refs: 'add', news: 'add', plan: 'today', library: 'more', status: 'more' };
+const SUBS = { add: ['bookmark', 'news', 'reference', 'artwork', 'schedule'], more: ['library', 'mine', 'status'] };
+const SUBHINT = { bookmark: 'Just for you — a video or artwork you like. Never goes to the AI.', news: 'A story for a post: the article link, screenshots, or both.',
+  reference: 'Teach the AI: reels, carousels and posts the studio studies for style.', artwork: 'A picture for a later post — tomorrow’s cover, a WILD slide.', schedule: 'Have the studio build a post at a time you pick.' };
+const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes(v) ? v : SUBS[g][0] };
 function showTab(t) {
+  t = OLDTAB[t] || t; if (!TITLE[t]) t = 'today';
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
   document.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('hide', p.dataset.pane !== t));
   store.set(K.tab, t);
+  $('pageTitle').textContent = TITLE[t]; $('pageTitle').classList.remove('hide');
   clearInterval(statusTimer);
-  if (t === 'status') { loadStatus(); statusTimer = setInterval(loadStatus, 15000) }
-  if (t === 'library') loadLibrary();
+  if (t === 'today') loadPlan();
+  if (t === 'saved') loadBookmarks();
   if (t === 'studio') loadReels();
-  if (t === 'refs') loadMyRefs();
-  if (t === 'plan') loadPlan();
+  if (SUBS[t]) showSub(t, subOf(t));
 }
-document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showSub(g, s) {
+  store.set('rm.sub.' + g, s);
+  const pane = document.querySelector(`[data-pane="${g}"]`);
+  pane.querySelectorAll('[data-sub]').forEach(d => d.classList.toggle('hide', d.dataset.sub !== s));
+  pane.querySelectorAll(`[data-seg="${g}"] button`).forEach(b => b.classList.toggle('on', b.dataset.s === s));
+  if (g === 'add') $('addHint').textContent = SUBHINT[s] || '';
+  clearInterval(statusTimer);
+  if (s === 'schedule') loadPlan();
+  if (s === 'library') loadLibrary();
+  if (s === 'mine') loadMyRefs();
+  if (s === 'status') { loadStatus(); statusTimer = setInterval(loadStatus, 15000) }
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { showTab(b.dataset.tab); window.scrollTo({ top: 0 }) });
+document.querySelectorAll('[data-seg] button').forEach(b => b.onclick = () => showSub(b.parentElement.dataset.seg, b.dataset.s));
 
 // swipe left / right anywhere on a tab to move to the next / previous tab (phone). The page follows the finger once the
 // drag is clearly sideways, so it's easy to start anywhere on the body — over cards, text fields (unless you're typing
 // in one) and thumbnails. Ignored only inside the carousel strips (they scroll sideways), videos (scrubbing) and selects.
 const TABS = [...document.querySelectorAll('.tabs button')].map(b => b.dataset.tab);
 let sw = null;
-const curPane = () => document.querySelector(`[data-pane="${store.get(K.tab) || 'refs'}"]`);
+const curPane = () => document.querySelector(`[data-pane="${store.get(K.tab) || 'today'}"]`);
 document.addEventListener('touchstart', e => {
   const t = e.target;
   if (e.touches.length !== 1 || !cfg().tok || t.closest('select,video,.strip,[data-noswipe]') ||
@@ -166,7 +187,7 @@ document.addEventListener('touchmove', e => {
     if (sw.axis === 'y') { sw = null; return }
   }
   if (e.cancelable) e.preventDefault();                       // sideways drag is ours: no page drift
-  const i = TABS.indexOf(store.get(K.tab) || 'refs'), edge = (dx > 0 && i === 0) || (dx < 0 && i === TABS.length - 1);
+  const i = TABS.indexOf(store.get(K.tab) || 'today'), edge = (dx > 0 && i === 0) || (dx < 0 && i === TABS.length - 1);
   sw.dx = dx;
   if (sw.pane) { sw.pane.style.transition = ''; sw.pane.style.transform = `translateX(${dx * (edge ? 0.15 : 0.45)}px)`; sw.pane.style.opacity = String(1 - Math.min(0.35, Math.abs(dx) / 900)) }
 }, { passive: false });
@@ -181,7 +202,7 @@ document.addEventListener('touchend', e => {
   const s = sw; sw = null;
   if (s.axis !== 'x') return;
   const dx = e.changedTouches[0].clientX - s.x, dt = Math.max(1, Date.now() - s.at), fast = Math.abs(dx) / dt > 0.35;
-  const i = TABS.indexOf(store.get(K.tab) || 'refs'), j = i + (dx < 0 ? 1 : -1);
+  const i = TABS.indexOf(store.get(K.tab) || 'today'), j = i + (dx < 0 ? 1 : -1);
   if ((Math.abs(dx) < 45 && !(fast && Math.abs(dx) > 20)) || j < 0 || j >= TABS.length) { sw = s; springBack(); sw = null; return }
   if (s.pane) { s.pane.style.transform = ''; s.pane.style.opacity = '' }
   showTab(TABS[j]); window.scrollTo({ top: 0 });
@@ -397,9 +418,9 @@ $('imgs').onchange = () => { addImages($('imgs').files); $('imgs').value = '' };
 ['dragleave', 'drop'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over') }));
 $('drop').addEventListener('drop', e => addImages(e.dataTransfer.files));
 document.addEventListener('paste', e => {
-  const tab = store.get(K.tab); if (tab !== 'news' && tab !== 'refs') return;
+  const sub = subOf('add'); if (store.get(K.tab) !== 'add' || !['news', 'reference', 'bookmark'].includes(sub)) return;
   const files = [...(e.clipboardData || {}).items || []].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
-  if (files.length) { e.preventDefault(); tab === 'news' ? addImages(files) : addUploads(files) }
+  if (files.length) { e.preventDefault(); sub === 'news' ? addImages(files) : sub === 'bookmark' ? addBm(files) : addUploads(files) }
 });
 const blobB64 = b => readB64(b);
 $('sendNews').onclick = async () => {
@@ -420,7 +441,7 @@ $('sendNews').onclick = async () => {
     const what = shots.length ? `${shots.length} screenshot${shots.length > 1 ? 's' : ''}` : 'link';
     await commitFiles(files, `inbox: news ${slug} (${what}${meta.url && shots.length ? ' + link' : ''})`, p => bar('newsBar', p));
     const cmd = `/${meta.kind || 'reel'} ${slug}`;
-    msg('newsMsg', 'ok', `Saved to <code>news/inbox/${esc(slug)}/</code>.${meta.url ? ' The studio reads the article from the link within a minute (Status → News shows it).' : ''} Run <code>${esc(cmd)}</code> when ready, or schedule it in Plan.`);
+    msg('newsMsg', 'ok', `Saved to <code>news/inbox/${esc(slug)}/</code>.${meta.url ? ' The studio reads the article from the link within a minute (Status → News shows it).' : ''} Run <code>${esc(cmd)}</code> when ready, or schedule it (Add → Schedule).`);
     shots.forEach(s => URL.revokeObjectURL(s.url)); shots = []; drawThumbs();
     $('aurl').value = ''; $('nkind').value = ''; validateNews();
   } catch (e) { msg('newsMsg', 'err', esc(e.message)); btn.disabled = false }
@@ -811,7 +832,7 @@ async function deleteRef(btn, id) {
   } catch (e) { msg('libMsg', 'err', esc(e.message)); btn.disabled = false; show('libMsg') }
 }
 $('libQ').oninput = drawLibrary;
-$('libAdd').onclick = () => showTab('refs');
+$('libAdd').onclick = () => { showTab('add'); showSub('add', 'reference') };
 
 $('upLearnWrap').innerHTML = learnSelect('auto', 'id="upLearn"');
 
@@ -885,7 +906,7 @@ async function loadNow(paths) {
   if (busy) {
     const mins = Math.max(0, Math.round((Date.now() - Date.parse(last.added)) / 60000));
     msg('nowMsg', 'info', last.status === 'running' ? `Claude is reading the news… (${mins} min so far, about 3 in all)` : `Waiting for GitHub to start the run… (${mins} min)${mins > 4 ? ' — taking long: check the market-now run in GitHub → Actions' : ''}`);
-    if (store.get(K.tab) === 'plan') nowTimer = setTimeout(loadPlan, 15000);
+    if (store.get(K.tab) === 'today') nowTimer = setTimeout(loadPlan, 15000);
   } else if (last && last.status === 'failed') msg('nowMsg', 'err', esc(last.error || 'The run failed.'));
   else clearMsg('nowMsg');
   // newest finished brief (from any request)
@@ -954,7 +975,7 @@ $('artFile').onchange = () => { setArt($('artFile').files[0]); $('artFile').valu
 ['dragleave', 'drop'].forEach(ev => $('artDrop').addEventListener(ev, e => { e.preventDefault(); $('artDrop').classList.remove('over') }));
 $('artDrop').addEventListener('drop', e => setArt(e.dataTransfer.files[0]));
 document.addEventListener('paste', e => {
-  if (store.get(K.tab) !== 'plan') return;
+  if (store.get(K.tab) !== 'add' || subOf('add') !== 'artwork') return;
   const f = [...(e.clipboardData || {}).items || []].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean)[0];
   if (f) { e.preventDefault(); setArt(f) }
 });
@@ -1067,6 +1088,110 @@ function drawUpcoming(items, queued) {
   });
 }
 
+// ---------- bookmarks: the editor's own shelf of videos and artwork (never read by the studio) ----------
+// Finance_Repo bookmarks/<id>/bookmark.json {id, url, note, source, images, added} + bookmarks/<id>/01.jpg …
+// No Action processes them and no agent reads them (Finance_Repo bookmarks/README.md).
+let bmShots = [], bms = [], bmPaths = [], bmShown = 60, bmSrc = '', bmThumb = {}, bmLoading = false;
+const BM_SRC = [['', 'All'], ['ig', 'Instagram'], ['yt', 'YouTube'], ['x', 'X'], ['web', 'Web'], ['shot', 'Screenshots']];
+const bmSource = u => u ? srcOf(u) || 'web' : 'shot';
+const ytId = u => { const m = (u || '').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/); return m ? m[1] : '' };
+const validateBm = () => { $('bmSave').disabled = !bmShots.length && !/^https?:\/\/\S+\.\S+/.test($('bmUrl').value.trim()) };
+$('bmUrl').oninput = validateBm;
+async function addBm(list) {
+  for (const f of [...list].filter(f => f.type.startsWith('image/'))) {
+    try { const blob = await compress(f); bmShots.push({ blob, url: URL.createObjectURL(blob) }) } catch { msg('bmMsg', 'err', `Couldn’t read ${esc(f.name || 'an image')}.`) }
+  }
+  drawBmShots();
+}
+function drawBmShots() {
+  $('bmThumbs').innerHTML = bmShots.map((s, i) => `<div class="th"><img src="${s.url}" alt=""><div class="ctl"><span></span><button class="x" data-i="${i}" aria-label="Remove">×</button><span></span></div></div>`).join('');
+  $('bmThumbs').querySelectorAll('button').forEach(b => b.onclick = () => { URL.revokeObjectURL(bmShots[+b.dataset.i].url); bmShots.splice(+b.dataset.i, 1); drawBmShots() });
+  validateBm();
+}
+$('bmDrop').onclick = e => { if (e.target.tagName !== 'INPUT') $('bmFiles').click() };
+$('bmFiles').onchange = () => { addBm($('bmFiles').files); $('bmFiles').value = '' };
+['dragenter', 'dragover'].forEach(ev => $('bmDrop').addEventListener(ev, e => { e.preventDefault(); $('bmDrop').classList.add('over') }));
+['dragleave', 'drop'].forEach(ev => $('bmDrop').addEventListener(ev, e => { e.preventDefault(); $('bmDrop').classList.remove('over') }));
+$('bmDrop').addEventListener('drop', e => addBm(e.dataTransfer.files));
+$('bmSave').onclick = async () => {
+  const btn = $('bmSave'); btn.disabled = true; clearMsg('bmMsg');
+  try {
+    const url = ($('bmUrl').value.trim().match(/https?:\/\/[^\s<>"']+/) || [''])[0];
+    const d = new Date(Date.now() + 5.5 * 3600e3).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    let tail = ''; try { tail = url ? slugify(new URL(url).hostname.replace(/^www\./, '').split('.')[0]) : 'shots' } catch {}
+    const id = `${d}-${tail || 'bm'}`, names = bmShots.map((_, i) => String(i + 1).padStart(2, '0') + '.jpg');
+    const meta = { id, url, note: $('bmNote').value.trim(), source: bmSource(url), images: names, added: new Date().toISOString() };
+    const files = [];
+    for (let i = 0; i < bmShots.length; i++) files.push({ path: `bookmarks/${id}/${names[i]}`, b64: await readB64(bmShots[i].blob) });
+    files.push({ path: `bookmarks/${id}/bookmark.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') });
+    await commitFiles(files, `rm-inbox: bookmark ${id}`, p => bar('bmBar', p));
+    msg('bmMsg', 'ok', 'Saved. Find it in <b>Saved</b>.');
+    bmShots.forEach(s => URL.revokeObjectURL(s.url)); bmShots = []; drawBmShots();
+    $('bmUrl').value = ''; $('bmNote').value = ''; validateBm();
+    bms.unshift(meta);
+  } catch (e) { msg('bmMsg', 'err', esc(e.message)); btn.disabled = false }
+  bar('bmBar', null);
+};
+async function loadBookmarks(more) {
+  if (bmLoading || !cfg().tok) return; bmLoading = true;
+  try {
+    if (!more) {
+      const { repo, branch } = cfg();
+      const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+      bmPaths = tree.tree.filter(t => t.type === 'blob' && /^bookmarks\/[^/]+\/bookmark\.json$/.test(t.path)).map(t => t.path).sort().reverse();
+    }
+    const have = new Set(bms.map(b => b.id));
+    const want = bmPaths.slice(0, bmShown).filter(p => !have.has(p.split('/')[1]));
+    const got = (await Promise.all(want.map(jsonAt))).filter(Boolean);
+    const keep = new Set(bmPaths.map(p => p.split('/')[1]));
+    bms = [...bms, ...got].filter((b, i, a) => a.findIndex(x => x.id === b.id) === i && keep.has(b.id)).sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+    clearMsg('bmListMsg'); drawBookmarks();
+  } catch (e) { msg('bmListMsg', 'err', esc(e.message)) }
+  bmLoading = false;
+}
+function drawBookmarks() {
+  $('bmFilter').innerHTML = BM_SRC.filter(([k]) => !k || bms.some(b => b.source === k)).map(([k, n]) => `<button class="${bmSrc === k ? 'on' : ''}" data-f="${k}">${n}</button>`).join('');
+  $('bmFilter').querySelectorAll('button').forEach(b => b.onclick = () => { bmSrc = b.dataset.f; drawBookmarks() });
+  const q = $('bmQ').value.trim().toLowerCase();
+  const shown = bms.filter(b => (!bmSrc || b.source === bmSrc) && (!q || `${b.note} ${b.url}`.toLowerCase().includes(q)));
+  const NAME = { ig: 'Instagram', yt: 'YouTube', x: 'X', web: 'Web', shot: 'Screenshot' };
+  $('bmGrid').innerHTML = shown.map(b => {
+    const host = (() => { try { return new URL(b.url).hostname.replace(/^www\./, '') } catch { return '' } })();
+    const day = new Date(b.added).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    return `<div class="bm"><div class="bp" data-open="${esc(b.id)}"><span class="big">${esc(NAME[b.source] || 'Link')}</span><span class="src">${esc((b.source || '').toUpperCase())}</span>${(b.images || []).length > 1 ? `<span class="cnt">${b.images.length}</span>` : ''}</div>
+      <div class="bb">${b.note ? `<div class="nt">${esc(b.note)}</div>` : ''}<div class="dt">${esc(day)}${host ? ' · ' + esc(host) : ''}</div>
+      <div class="ba">${b.url ? `<a href="${esc(b.url)}" target="_blank" rel="noopener">Open ↗</a>` : '<span></span>'}<button data-del="${esc(b.id)}">Delete</button></div></div></div>`;
+  }).join('') || `<div class="empty" style="grid-column:1/-1">${bms.length ? 'Nothing matches.' : 'No bookmarks yet — Add → Bookmark.'}</div>`;
+  for (const b of shown) {
+    const el = $('bmGrid').querySelector(`[data-open="${CSS.escape(b.id)}"]`); if (!el) continue;
+    const set = u => { el.style.backgroundImage = `url(${u})`; el.querySelector('.big').classList.add('hide') };
+    if (bmThumb[b.id]) set(bmThumb[b.id]);
+    else if ((b.images || []).length) rawBlobUrl(`bookmarks/${b.id}/${b.images[0]}`).then(u => { if (u) { bmThumb[b.id] = u; set(u) } });
+    else if (ytId(b.url)) { bmThumb[b.id] = `https://i.ytimg.com/vi/${ytId(b.url)}/hqdefault.jpg`; set(bmThumb[b.id]) }
+    el.onclick = () => (b.images || []).length ? openLightbox(b) : b.url && window.open(b.url, '_blank', 'noopener');
+  }
+  $('bmGrid').querySelectorAll('[data-del]').forEach(btn => btn.onclick = () => deleteBm(btn, btn.dataset.del));
+  $('bmMore').classList.toggle('hide', bmPaths.length <= bmShown);
+}
+async function openLightbox(b) {
+  $('lbStrip').innerHTML = b.images.map((_, i) => `<img data-i="${i}" alt="">`).join(''); $('lightbox').classList.remove('hide');
+  b.images.forEach(async (n, i) => { const u = i === 0 && bmThumb[b.id] ? bmThumb[b.id] : await rawBlobUrl(`bookmarks/${b.id}/${n}`); const im = $('lbStrip').querySelector(`[data-i="${i}"]`); if (u && im) im.src = u });
+}
+$('lbClose').onclick = () => $('lightbox').classList.add('hide');
+async function deleteBm(btn, id) {
+  if (!armTap(btn, 'Sure?')) return;
+  btn.disabled = true;
+  try {
+    const { repo, branch } = cfg();
+    const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+    const files = tree.tree.filter(t => t.type === 'blob' && t.path.startsWith(`bookmarks/${id}/`)).map(t => ({ path: t.path, del: true }));
+    if (files.length) await commitFiles(files, `rm-inbox: delete bookmark ${id}`);
+    bms = bms.filter(b => b.id !== id); bmPaths = bmPaths.filter(p => !p.startsWith(`bookmarks/${id}/`)); drawBookmarks();
+  } catch (e) { msg('bmListMsg', 'err', esc(e.message)); btn.disabled = false }
+}
+$('bmQ').oninput = drawBookmarks;
+$('bmMore').onclick = () => { bmShown += 60; loadBookmarks(true) };
+
 // ---------- quick tags: one tap adds a tag the studio routes on (pacing → pacer agent, transitions → transitioner agent) ----------
 const QUICK = ['pacing', 'transitions', 'hook', 'color', 'typography', 'kinetic'];
 function drawQuick() {
@@ -1098,12 +1223,20 @@ function applyShared() {
   let u = ''; try { u = sessionStorage.getItem(SHARE_KEY) || '' } catch {}
   if (!u || !cfg().tok) return;
   try { sessionStorage.removeItem(SHARE_KEY) } catch {}
-  showTab('refs');
-  const cur = $('links').value.trim();
-  if (!cur.includes(u)) $('links').value = (cur ? cur + '\n' : '') + u;
-  parseLinks();
-  msg('shareMsg', 'info', 'Shared from your phone. Add a note on what you like, then tap <b>Send to studio</b>.');
-  const note = $('linkCards').querySelector('input'); if (note) note.focus();
+  showTab('add');
+  $('shareUrl').textContent = u; $('shareCard').classList.remove('hide');
+  $('shareCard').querySelectorAll('[data-share]').forEach(b => b.onclick = () => {
+    const to = b.dataset.share; $('shareCard').classList.add('hide'); showSub('add', to);
+    if (to === 'bookmark') { $('bmUrl').value = u; validateBm(); $('bmNote').focus() }
+    else if (to === 'news') { $('aurl').value = u; validateNews() }
+    else {
+      const cur = $('links').value.trim();
+      if (!cur.includes(u)) $('links').value = (cur ? cur + '\n' : '') + u;
+      parseLinks();
+      msg('shareMsg', 'info', 'Add a note on what you like, then tap <b>Send to studio</b>.');
+      const note = $('linkCards').querySelector('input'); if (note) note.focus();
+    }
+  });
 }
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 takeShared();

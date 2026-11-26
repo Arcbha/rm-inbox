@@ -1,6 +1,12 @@
 # Rupee Mechanics
 
-A static page that feeds the Rupee Mechanics studio: reference links and videos, news screenshots, and the studio's status.
+A static page that feeds the Rupee Mechanics studio. Five tabs in a bottom bar:
+
+- **Today** — Market now (Top 5 now), the pre-market post switch, what's coming up, artwork saved for posts.
+- **Add** — one place to send anything: Bookmark · News · Reference · Artwork · Schedule. Sharing a link from the phone asks: Bookmark, Teach the AI, or News story.
+- **Saved** — your bookmarks (links and screenshots of videos and art you like). Private: the studio never reads them.
+- **Studio** — rendered carousels and reels.
+- **More** — the reference library, what you sent, studio status, Forget token.
 
 - No build step, no secrets. `index.html` + `app.js`.
 - The page talks only to `api.github.com`, using a fine-grained token you paste once. The token is kept in that browser's `localStorage` and never leaves it except as the `Authorization` header to GitHub. **Forget token** removes it.
