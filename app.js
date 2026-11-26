@@ -134,7 +134,7 @@ $('forget').onclick = () => { if (armTap($('forget'), 'Tap again to forget')) { 
 let statusTimer = null;
 const TITLE = { today: 'Today', add: 'Add', saved: 'Saved', studio: 'Studio', more: 'More' };
 const OLDTAB = { refs: 'add', news: 'add', plan: 'today', library: 'more', status: 'more' };
-const SUBS = { add: ['bookmark', 'news', 'reference', 'artwork', 'schedule'], more: ['library', 'mine', 'status'] };
+const SUBS = { add: ['news', 'reference', 'artwork', 'schedule'], more: ['library', 'mine', 'status'] };
 const SUBHINT = { bookmark: 'Just for you — a video or artwork you like. Never goes to the AI.', news: 'A story for a post: the article link, screenshots, or both.',
   reference: 'Teach the AI: reels, carousels and posts the studio studies for style.', artwork: 'A picture for a later post — tomorrow’s cover, a WILD slide.', schedule: 'Have the studio build a post at a time you pick.' };
 const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes(v) ? v : SUBS[g][0] };
@@ -382,7 +382,7 @@ function newsSlug() {
 const newsTitle = slug => /^news-\d/.test(slug) ? '' : slug.replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
 $('aurl').oninput = validateNews;
 const newsUrlOk = () => /^https?:\/\/\S+\.\S+/.test($('aurl').value.trim());
-function validateNews() { $('sendNews').disabled = !shots.length && !newsUrlOk() }
+function validateNews() { const off = !shots.length && !newsUrlOk(); $('sendNews').disabled = off; $('sendBuild').disabled = off }
 
 async function compress(file) {
   const bmp = await createImageBitmap(file);
@@ -418,14 +418,32 @@ $('imgs').onchange = () => { addImages($('imgs').files); $('imgs').value = '' };
 ['dragleave', 'drop'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over') }));
 $('drop').addEventListener('drop', e => addImages(e.dataTransfer.files));
 document.addEventListener('paste', e => {
-  const sub = subOf('add'); if (store.get(K.tab) !== 'add' || !['news', 'reference', 'bookmark'].includes(sub)) return;
+  const tab = store.get(K.tab), sub = subOf('add');
   const files = [...(e.clipboardData || {}).items || []].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
-  if (files.length) { e.preventDefault(); sub === 'news' ? addImages(files) : sub === 'bookmark' ? addBm(files) : addUploads(files) }
+  if (!files.length) return;
+  if (tab === 'saved') { e.preventDefault(); return addBm(files) }
+  if (tab !== 'add' || !['news', 'reference'].includes(sub)) return;
+  e.preventDefault(); sub === 'news' ? addImages(files) : addUploads(files)
 });
 const blobB64 = b => readB64(b);
-$('sendNews').onclick = async () => {
-  const btn = $('sendNews'); if (!shots.length && !newsUrlOk()) return;
-  btn.disabled = true; clearMsg('newsMsg');
+// optional cover-art reference for this story → Finance_Repo studio/editor-assets/<slug>/cover-inspiration.<ext>
+let nArt = null;
+function setNArt(f) {
+  if (!f || !f.type.startsWith('image/')) return;
+  if (nArt) URL.revokeObjectURL(nArt.url);
+  nArt = { file: f, url: URL.createObjectURL(f) };
+  $('nArtPrev').classList.remove('hide');
+  $('nArtPrev').innerHTML = `<img src="${nArt.url}" alt=""><button class="btn ghost small danger" id="nArtX" style="width:100%;border-radius:0">Remove</button>`;
+  $('nArtX').onclick = () => { URL.revokeObjectURL(nArt.url); nArt = null; $('nArtPrev').classList.add('hide'); $('nArtPrev').innerHTML = '' };
+}
+$('nArtDrop').onclick = e => { if (e.target.tagName !== 'INPUT') $('nArt').click() };
+$('nArt').onchange = () => { setNArt($('nArt').files[0]); $('nArt').value = '' };
+['dragenter', 'dragover'].forEach(ev => $('nArtDrop').addEventListener(ev, e => { e.preventDefault(); $('nArtDrop').classList.add('over') }));
+['dragleave', 'drop'].forEach(ev => $('nArtDrop').addEventListener(ev, e => { e.preventDefault(); $('nArtDrop').classList.remove('over') }));
+$('nArtDrop').addEventListener('drop', e => setNArt(e.dataTransfer.files[0]));
+async function sendStory(build) {
+  const btn = build ? $('sendBuild') : $('sendNews'); if (!shots.length && !newsUrlOk()) return;
+  $('sendNews').disabled = $('sendBuild').disabled = true; clearMsg('newsMsg');
   try {
     const { repo, branch } = cfg(), base = newsSlug();
     let slug = base;                                    // never overwrite an earlier story: base, base-2, base-3, …
@@ -433,20 +451,36 @@ $('sendNews').onclick = async () => {
       const existing = await api(`/repos/${repo}/contents/news/inbox/${slug}?ref=${encodeURIComponent(branch)}`).catch(e => { if (e.status === 404) return null; throw e });
       if (!existing) break; slug = `${base}-${n}`;
     }
+    const kind = $('nkind').value || (build ? 'carousel' : ''), note = $('nNote').value.trim();
     const names = shots.map((_, i) => String(i + 1).padStart(2, '0') + '.jpg');
     const files = [];
     for (let i = 0; i < shots.length; i++) files.push({ path: `news/inbox/${slug}/${names[i]}`, b64: await blobB64(shots[i].blob) });
-    const meta = { story: newsTitle(slug), url: $('aurl').value.trim(), ...($('nkind').value ? { kind: $('nkind').value } : {}), notes: '', images: names, added: new Date().toISOString() };
+    const meta = { story: newsTitle(slug), url: $('aurl').value.trim(), ...(kind ? { kind } : {}), notes: note, images: names, added: new Date().toISOString() };
+    if (nArt) {
+      const ext = ((nArt.file.name || '').match(/\.(png|jpe?g|webp|gif|avif|heic)$/i) || [, 'png'])[1].toLowerCase().replace('jpeg', 'jpg');
+      meta.cover_ref = `studio/editor-assets/${slug}/cover-inspiration.${ext}`;
+      files.push({ path: meta.cover_ref, b64: await readB64(nArt.file) });
+      files.push({ path: `studio/editor-assets/${slug}/note.md`, b64: b64utf8(`# Editor art for ${slug}\n\n- \`cover-inspiration.${ext}\` — sent from RM Inbox with the story: the cover's visual language (inspiration for the treatment, never the subject — COVER-PLAYBOOK §8).${note ? ` Editor's note: ${note}` : ''}\n`) });
+    }
     files.push({ path: `news/inbox/${slug}/meta.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') });
+    if (build) {
+      const ts = new Date(Date.now() + 5.5 * 3600e3).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+      files.push({ path: `studio/schedule/build/build-${ts}-${slug}.json`, b64: b64utf8(JSON.stringify({ slug, kind, note, added: new Date().toISOString(), status: 'pending', by: 'rm-inbox' }, null, 2) + '\n') });
+    }
     const what = shots.length ? `${shots.length} screenshot${shots.length > 1 ? 's' : ''}` : 'link';
-    await commitFiles(files, `inbox: news ${slug} (${what}${meta.url && shots.length ? ' + link' : ''})`, p => bar('newsBar', p));
-    const cmd = `/${meta.kind || 'reel'} ${slug}`;
-    msg('newsMsg', 'ok', `Saved to <code>news/inbox/${esc(slug)}/</code>.${meta.url ? ' The studio reads the article from the link within a minute (Status → News shows it).' : ''} Run <code>${esc(cmd)}</code> when ready, or schedule it (Add → Schedule).`);
+    await commitFiles(files, `inbox: news ${slug} (${what}${meta.url && shots.length ? ' + link' : ''}${nArt ? ' + cover art' : ''})${build ? ' · build now' : ''}`, p => bar('newsBar', p));
+    msg('newsMsg', 'ok', build
+      ? `Sent, and the ${esc(kind)} is building on GitHub now (about 30–60 minutes). Watch it in <b>Today → Coming up</b>; it lands in <b>Studio</b>.`
+      : `Saved to <code>news/inbox/${esc(slug)}/</code>.${meta.url ? ' The studio reads the article from the link within a minute.' : ''} Run <code>/${esc(kind || 'carousel')} ${esc(slug)}</code> in Claude, or tap Send &amp; build now next time.`);
     shots.forEach(s => URL.revokeObjectURL(s.url)); shots = []; drawThumbs();
-    $('aurl').value = ''; $('nkind').value = ''; validateNews();
-  } catch (e) { msg('newsMsg', 'err', esc(e.message)); btn.disabled = false }
+    $('aurl').value = ''; $('nkind').value = ''; $('nNote').value = '';
+    if (nArt) { URL.revokeObjectURL(nArt.url); nArt = null; $('nArtPrev').classList.add('hide'); $('nArtPrev').innerHTML = '' }
+    validateNews();
+  } catch (e) { msg('newsMsg', 'err', esc(e.message)); validateNews() }
   bar('newsBar', null);
-};
+}
+$('sendNews').onclick = () => sendStory(false);
+$('sendBuild').onclick = () => sendStory(true);
 
 // ---------- tab 3: status ----------
 const ago = iso => { const s = (Date.now() - new Date(iso)) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago' };
@@ -876,7 +910,9 @@ async function loadPlan() {
     const itemP = paths.filter(p => { const m = p.match(/^studio\/schedule\/items\/(\d{8})-[^/]+\.json$/); return m && m[1] >= since });
     const items = (await Promise.all(itemP.map(async p => ({ p, m: await jsonAt(p) })))).filter(x => x.m);
     const schQ = (await Promise.all(paths.filter(p => /^studio\/schedule\/queue\/[^/]+\.json$/.test(p)).map(async p => ({ p, m: await jsonAt(p), err: errOf(p) })))).filter(x => x.m);
-    drawUpcoming(items, schQ);
+    const buildP = paths.filter(p => /^studio\/schedule\/build\/[^/]+\.json$/.test(p)).sort().reverse().slice(0, 5);
+    const builds = (await Promise.all(buildP.map(async p => ({ p, m: await jsonAt(p) })))).filter(x => x.m);
+    drawUpcoming(items, schQ, builds);
   } catch (e) { msg('upMsg', 'err', esc(e.message)) }
   planLoading = false;
 }
@@ -1056,10 +1092,15 @@ $('schSend').onclick = async () => {
   } catch (e) { msg('schMsg', 'err', esc(e.message)); btn.disabled = false }
 };
 
-function drawUpcoming(items, queued) {
+function drawUpcoming(items, queued, builds = []) {
   const DOT = { pending: 'wait', started: 'run', done: 'ok', failed: 'err', cancelled: '' };
   const WORD = { pending: 'Scheduled', started: 'Building now', done: 'Done — see Studio', failed: 'Failed', cancelled: 'Cancelled' };
   const rows = [];
+  const BW = { pending: 'Waiting for GitHub to start', running: 'Building now on GitHub', done: 'Ready — open Studio', failed: 'Failed' };
+  for (const x of builds) { const m = x.m;
+    rows.push({ at: m.added, html: item(DOT[m.status] ?? 'wait', `Build now · ${esc(KIND_NAME[m.kind] || m.kind)} · ${esc(m.slug)}`,
+      `${BW[m.status] || esc(m.status)}${m.verdict ? ' · ' + esc(m.verdict.slice(0, 60)) : ''}`, m.error ? `<div class="e">${esc(m.error)}</div>` : '') }) }
+  if (builds.some(x => ['pending', 'running'].includes(x.m.status)) && store.get(K.tab) === 'today') { clearTimeout(nowTimer); nowTimer = setTimeout(loadPlan, 30000) }
   for (const x of queued) rows.push({ at: x.m.run_at, html: item(x.err ? 'err' : 'wait', `${esc(KIND_NAME[x.m.kind] || x.m.kind)} · ${esc(x.m.run_at)} IST`,
       x.err ? 'Couldn’t schedule it — remove and try again (needs a date and time).' : 'Saved · the studio files it within a minute',
       `${x.m.brief ? `<div class="s">“${esc(x.m.brief.slice(0, 90))}”</div>` : ''}<div class="acts"><button class="btn ghost small danger" data-sq="${esc(x.p)}">Remove</button></div>`) });
@@ -1125,7 +1166,7 @@ $('bmSave').onclick = async () => {
     for (let i = 0; i < bmShots.length; i++) files.push({ path: `bookmarks/${id}/${names[i]}`, b64: await readB64(bmShots[i].blob) });
     files.push({ path: `bookmarks/${id}/bookmark.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') });
     await commitFiles(files, `rm-inbox: bookmark ${id}`, p => bar('bmBar', p));
-    msg('bmMsg', 'ok', 'Saved. Find it in <b>Saved</b>.');
+    msg('bmMsg', 'ok', 'Saved — it’s in the list below.'); setTimeout(() => loadBookmarks(), 1500);
     bmShots.forEach(s => URL.revokeObjectURL(s.url)); bmShots = []; drawBmShots();
     $('bmUrl').value = ''; $('bmNote').value = ''; validateBm();
     bms.unshift(meta);
@@ -1226,9 +1267,10 @@ function applyShared() {
   showTab('add');
   $('shareUrl').textContent = u; $('shareCard').classList.remove('hide');
   $('shareCard').querySelectorAll('[data-share]').forEach(b => b.onclick = () => {
-    const to = b.dataset.share; $('shareCard').classList.add('hide'); showSub('add', to);
-    if (to === 'bookmark') { $('bmUrl').value = u; validateBm(); $('bmNote').focus() }
-    else if (to === 'news') { $('aurl').value = u; validateNews() }
+    const to = b.dataset.share; $('shareCard').classList.add('hide');
+    if (to === 'bookmark') { showTab('saved'); $('bmUrl').value = u; validateBm(); $('bmNote').focus(); return }
+    showSub('add', to);
+    if (to === 'news') { $('aurl').value = u; validateNews() }
     else {
       const cur = $('links').value.trim();
       if (!cur.includes(u)) $('links').value = (cur ? cur + '\n' : '') + u;

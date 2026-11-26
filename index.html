@@ -277,25 +277,8 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
           <button class="btn ghost" data-share="news"><b>News story</b><span>make a post</span></button>
         </div>
       </div>
-      <div class="seg" data-seg="add" data-noswipe><button data-s="bookmark">Bookmark</button><button data-s="news">News</button><button data-s="reference">Reference</button><button data-s="artwork">Artwork</button><button data-s="schedule">Schedule</button></div>
+      <div class="seg" data-seg="add" data-noswipe><button data-s="news">News</button><button data-s="reference">Reference</button><button data-s="artwork">Artwork</button><button data-s="schedule">Schedule</button></div>
       <p class="hint seghint" id="addHint"></p>
-      <div data-sub="bookmark" class="hide">
-      <div class="card">
-        <h2>Bookmark</h2>
-        <p class="hint">Keep a video or artwork you like — just for you. Bookmarks never go to the AI.</p>
-        <input id="bmUrl" type="url" inputmode="url" placeholder="Paste a link — Instagram, YouTube, X, any site" autocapitalize="off" spellcheck="false">
-        <div style="height:10px"></div>
-        <div class="drop" id="bmDrop">…or paste, drop, or <b>choose screenshots</b>
-          <input id="bmFiles" type="file" accept="image/*" multiple class="hide"></div>
-        <div class="thumbs" id="bmThumbs"></div>
-        <label for="bmNote">Note</label>
-        <input id="bmNote" placeholder="optional — what you like about it">
-        <div style="height:14px"></div>
-        <button class="btn primary" id="bmSave" disabled>Save bookmark</button>
-        <div class="bar" id="bmBar"><i></i></div>
-        <div class="msg" id="bmMsg"></div>
-      </div>
-      </div>
       <div data-sub="news" class="hide">
       <div class="card">
         <h2>News</h2>
@@ -307,8 +290,17 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <input id="aurl" type="url" inputmode="url" placeholder="https://…" autocapitalize="off" spellcheck="false">
         <label for="nkind">Make a</label>
         <select id="nkind" class="learn"><option value="">Decide later</option><option value="reel">Reel</option><option value="carousel">Carousel</option><option value="poster">Poster</option></select>
+        <label for="nNote">Note <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></label>
+        <textarea id="nNote" placeholder="what you want: angle, mood, &quot;same font as the last post&quot;…" style="min-height:72px"></textarea>
+        <label>Cover art reference <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></label>
+        <div class="drop" id="nArtDrop" style="padding:16px 14px">Add a picture whose look the cover should learn from
+          <input id="nArt" type="file" accept="image/*" class="hide"></div>
+        <div class="prev hide" id="nArtPrev"></div>
         <div style="height:14px"></div>
         <button class="btn primary" id="sendNews" disabled>Send story</button>
+        <div style="height:8px"></div>
+        <button class="btn ghost" id="sendBuild" disabled style="width:100%">Send &amp; build now</button>
+        <p class="hint" style="margin:8px 2px 0">Build now makes the whole post on GitHub (about 30–60 minutes) and shows it in Studio. Without it, the story waits for you to start it.</p>
         <div class="bar" id="newsBar"><i></i></div>
         <div class="msg" id="newsMsg"></div>
       </div>
@@ -397,6 +389,21 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
 
     <!-- Saved: the editor's bookmarks (never read by the studio) -->
     <section data-pane="saved" class="hide">
+      <div class="card">
+        <h2>Bookmark</h2>
+        <p class="hint">Paste a link or add screenshots of a video or artwork you like. Just for you — bookmarks never go to the AI.</p>
+        <input id="bmUrl" type="url" inputmode="url" placeholder="Paste a link — Instagram, YouTube, X, any site" autocapitalize="off" spellcheck="false">
+        <div style="height:10px"></div>
+        <div class="drop" id="bmDrop">…or paste, drop, or <b>choose screenshots</b>
+          <input id="bmFiles" type="file" accept="image/*" multiple class="hide"></div>
+        <div class="thumbs" id="bmThumbs"></div>
+        <label for="bmNote">Note</label>
+        <input id="bmNote" placeholder="optional — what you like about it">
+        <div style="height:14px"></div>
+        <button class="btn primary" id="bmSave" disabled>Save bookmark</button>
+        <div class="bar" id="bmBar"><i></i></div>
+        <div class="msg" id="bmMsg"></div>
+      </div>
       <div class="libbar"><input id="bmQ" placeholder="Search bookmarks" autocapitalize="off"></div>
       <div class="seg" id="bmFilter" data-noswipe></div>
       <div class="msg" id="bmListMsg"></div>
