@@ -212,6 +212,29 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;min-he
 .brief .srcs a{color:var(--blue);font-weight:600;text-decoration:none;margin-right:10px}
 .brief .head{font-size:16px;font-weight:600;margin-top:12px}
 .brief .when{font-size:12px;color:var(--sub);margin-top:12px}
+/* live bar (editor 2026-11-26): what is building now, who is working, what needs you */
+.live{margin:-4px 0 12px}
+.livesum{width:100%;display:flex;align-items:center;gap:10px;border:0;background:#fff;border-radius:999px;padding:9px 14px;font:inherit;font-size:13px;font-weight:600;color:var(--ink);box-shadow:0 0 0 1px var(--line);text-align:left}
+.livesum .dot,.lrow .dot{margin:0}
+.livesum .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.livesum .t span,.lrow .d{color:var(--sub);font-weight:500}
+.livesum .chev{color:var(--sub);font-size:12px}
+.dot.run{animation:livepulse 1.4s ease-in-out infinite}
+@keyframes livepulse{50%{opacity:.35}}
+.livelist{background:#fff;border-radius:16px;margin-top:8px;padding:2px 14px;box-shadow:0 0 0 1px var(--line)}
+.lrow{display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line);font-size:14px}
+.lrow:first-child{border-top:0}
+.lrow .dot{margin-top:5px}
+.lrow .b{flex:1;min-width:0}
+.lrow .h{font-weight:600;word-break:break-word}
+.lrow .d{font-size:12.5px;margin-top:2px;word-break:break-word}
+.lrow .trail{font-size:12px;color:var(--sub);margin-top:4px}
+.lrow .trail b{color:var(--ink)}
+.lrow .row2{display:flex;gap:6px;margin-top:8px}
+.lrow .row2 input{flex:1;min-width:0;padding:8px 10px;font-size:14px;margin:0}
+.lrow .row2 .btn{width:auto;flex:none;padding-left:16px;padding-right:16px}
+.fixp{margin-top:10px}
+.fixp textarea{min-height:70px}
 code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 5px}
 </style>
 </head>
@@ -221,6 +244,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
     <h1><svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f78ff"/><stop offset="1" stop-color="#0742b8"/></linearGradient></defs><rect width="100" height="100" rx="24" fill="url(#lg)"/><path transform="translate(50 50) scale(1.08) translate(-50 -52)" d="M33 29H67M33 41H67M46 29C64 29 64 53 46 53H35L63 75" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg><div>Rupee <span>Mechanics</span></div></h1>
     <div class="who" id="who"></div>
   </header>
+  <div class="live hide" id="live"><button class="livesum" id="liveSum" type="button"></button><div class="livelist hide" id="liveList"></div></div>
   <h2 class="pagetitle hide" id="pageTitle">Pre &amp; Post Market</h2>
 
   <!-- setup: shown until a token is saved -->
@@ -351,7 +375,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div data-sub="schedule" class="hide">
       <div class="card">
         <h2>Schedule a post</h2>
-        <p class="hint">The studio starts building it at that time (it checks at 7:45, 12:45, 5:45 and 9:45 pm IST) and tells you when the preview is in Studio. It never posts by itself.</p>
+        <p class="hint">Carousels and posters start within the hour of that time (checked at :45 every hour) and show in the live bar; reels at the next 7:45, 12:45, 5:45 or 9:45 pm IST check. Nothing posts by itself.</p>
         <label for="schKind">Make a</label>
         <select id="schKind" class="learn"><option value="carousel">Carousel</option><option value="poster">Poster</option><option value="reel">Reel (visuals, no voice)</option><option value="custom">Something else (say it in the brief)</option></select>
         <div class="two">

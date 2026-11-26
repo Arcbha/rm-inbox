@@ -106,6 +106,109 @@ async function commitFiles(files, message, onProgress, rebuild) {
   }
 }
 
+// ---------- build requests + live bar (editor 2026-11-26) ----------
+// A request is studio/schedule/build/<stem>.json → Finance_Repo's build-now Action (Claude account failover, queue, auto-retry
+// after a usage limit). While it runs, engine/live_push.sh keeps live.json on the `live` branch: stage, agent, account.
+const istStamp = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+function buildFile(slug, kind, note = '', extra = {}) {
+  return { path: `studio/schedule/build/build-${istStamp()}-${slug}`.slice(0, 110) + '.json',
+    b64: b64utf8(JSON.stringify({ slug, kind, note, ...extra, added: new Date().toISOString(), status: 'pending', by: 'rm-inbox' }, null, 2) + '\n') };
+}
+const KIND_WORD = { carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', revise: 'Fix', rate: 'Rating', resume: 'Answer' };
+let liveTimer = null, liveOpen = false, liveReq = {}, liveJobs = {}, liveBusy = false;
+const mins = iso => Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+const dur = m => m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+async function dirList(path) {
+  const { repo, branch } = cfg();
+  return api(`/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`).catch(e => { if (e.status === 404) return []; throw e });
+}
+function pollLive(ms) { clearTimeout(liveTimer); liveTimer = setTimeout(loadLive, ms) }
+async function loadLive() {
+  if (!cfg().tok || liveBusy) return; liveBusy = true;
+  let next = 90000;
+  try {
+    const { repo } = cfg();
+    const [lv, reqs, jobs] = await Promise.all([
+      api(`/repos/${repo}/contents/live.json?ref=live`).then(r => JSON.parse(utf8b64(r.content))).catch(() => ({ runs: [] })),
+      dirList('studio/schedule/build'), dirList('studio/jobs')]);
+    for (const f of reqs.filter(f => f.name.endsWith('.json')).sort((a, b) => b.name.localeCompare(a.name)).slice(0, 10)) {
+      const c = liveReq[f.name];
+      if (!c || c.sha !== f.sha) liveReq[f.name] = { sha: f.sha, m: await jsonAt(f.path) };
+    }
+    for (const k of Object.keys(liveReq)) if (!reqs.some(f => f.name === k)) delete liveReq[k];
+    for (const f of jobs.filter(f => f.name.endsWith('.json') && f.name !== 'autoresume.json')) {
+      const c = liveJobs[f.name];
+      if (!c || c.sha !== f.sha) liveJobs[f.name] = { sha: f.sha, m: await jsonAt(f.path) };
+    }
+    const live = Object.fromEntries((lv.runs || []).map(r => [r.id + '.json', r]));
+    const rows = [];
+    for (const [name, { m }] of Object.entries(liveReq).sort((a, b) => b[0].localeCompare(a[0]))) {
+      if (!m) continue;
+      const L = live[name];
+      const st = ['pending', 'limited'].includes(m.status) && L && L.status === 'running' && mins(lv.updated) < 5 ? 'running' : (m.status || 'pending');
+      const age = mins(m.finished || m.added);
+      if ((st === 'done' && age > 90) || (st === 'failed' && age > 720) || st === 'running' && !L && age > 180) continue;
+      rows.push({ st, name, m, L });
+    }
+    const blocked = Object.values(liveJobs).filter(j => j.m && j.m.status === 'blocked');
+    drawLive(rows, blocked, lv);
+    if (rows.some(r => ['running', 'pending'].includes(r.st))) next = 20000;
+  } catch (e) { /* the bar stays as it was; the next poll retries */ }
+  liveBusy = false;
+  pollLive(document.visibilityState === 'visible' ? next : 300000);
+}
+function drawLive(rows, blocked, lv) {
+  const by = s => rows.filter(r => r.st === s);
+  const run = by('running'), wait = by('pending'), lim = by('limited'), bad = by('failed'), done = by('done');
+  const any = rows.length + blocked.length;
+  $('live').classList.toggle('hide', !any);
+  if (!any) return;
+  const lead = run[0], dot = run.length ? 'run' : blocked.length || lim.length || wait.length ? 'wait' : bad.length ? 'err' : 'ok';
+  const what = r => `${esc(r.m.slug)}${r.L && r.L.agent ? ` · ${esc(r.L.agent)}` : ''}${r.L && r.L.stage ? ` · ${esc(r.L.stage)}` : ''}${r.L && r.L.progress ? ` ${esc(r.L.progress)}` : ''}`;
+  const sum = lead ? `<b>Building</b> <span>${what(lead)} · ${dur(mins((lead.L && lead.L.started) || lead.m.added))}</span>`
+    : blocked.length ? `<b>Needs you</b> <span>${esc(blocked[0].m.id)}</span>`
+    : lim.length ? `<b>Paused</b> <span>usage limit — continues by itself</span>`
+    : wait.length ? `<b>Starting</b> <span>${esc(wait[0].m.slug)}</span>`
+    : bad.length ? `<b>Failed</b> <span>${esc(bad[0].m.slug)}</span>` : `<b>Ready</b> <span>${esc(done[0].m.slug)} — in Studio</span>`;
+  const more = run.length + wait.length + lim.length + blocked.length - 1;
+  $('liveSum').innerHTML = `<span class="dot ${dot}"></span><span class="t">${sum}${more > 0 ? ` <span>· +${more} more</span>` : ''}</span><span class="chev">${liveOpen ? '▲' : '▼'}</span>`;
+  const title = r => `${esc(KIND_WORD[r.m.kind] || r.m.kind)} · ${esc(r.m.slug)}`;
+  const row = (d, h, sub, extra = '') => `<div class="lrow"><span class="dot ${d}"></span><div class="b"><div class="h">${h}</div>${sub ? `<div class="d">${sub}</div>` : ''}${extra}</div></div>`;
+  const out = [];
+  for (const j of blocked) out.push(row('wait', `Needs you · ${esc(j.m.id)}`, esc(j.m.blocked || 'waiting on you'),
+    `<div class="row2"><input placeholder="Your answer" data-ans-in="${esc(j.m.id)}"><button class="btn primary small" data-ans="${esc(j.m.id)}">Send</button></div>`));
+  for (const r of run) {
+    const L = r.L || {};
+    out.push(row('run', title(r),
+      `${L.agent ? `<b>${esc(L.agent)}</b> · ` : ''}${esc(L.stage || 'starting')}${L.progress ? ' ' + esc(L.progress) : ''} · ${dur(mins(L.started || r.m.added))}${L.account ? ` · account ${esc(L.account)}` : ''}${mins(lv.updated) > 3 ? ` · no update for ${dur(mins(lv.updated))}` : ''}`,
+      (L.trail || []).length ? `<div class="trail">${L.trail.slice(-5).map((t, i, a) => i === a.length - 1 ? `<b>${esc(t)}</b>` : esc(t)).join(' → ')}</div>` : ''));
+  }
+  for (const r of wait) out.push(row('wait', title(r), 'waiting for GitHub to start it'));
+  for (const r of lim) out.push(row('wait', title(r), esc(r.m.error || 'paused at a usage limit — continues by itself')));
+  for (const r of bad) out.push(row('err', title(r), esc((r.m.error || 'failed').slice(0, 220)),
+    `<div class="row2"><button class="btn ghost small" data-retry="${esc(r.name)}">Retry</button></div>`));
+  for (const r of done) out.push(row('ok', title(r), `ready${r.m.verdict ? ' · ' + esc(r.m.verdict.slice(0, 80)) : ''} — open Studio`));
+  $('liveList').innerHTML = out.join('');
+  $('liveList').classList.toggle('hide', !liveOpen);
+}
+$('liveSum').onclick = () => { liveOpen = !liveOpen; $('liveList').classList.toggle('hide', !liveOpen); const c = $('liveSum').querySelector('.chev'); if (c) c.textContent = liveOpen ? '▲' : '▼' };
+$('liveList').addEventListener('click', async e => {
+  const ans = e.target.closest('[data-ans]'), rt = e.target.closest('[data-retry]');
+  if (ans) {
+    const id = ans.dataset.ans, v = $('liveList').querySelector(`[data-ans-in="${CSS.escape(id)}"]`).value.trim(); if (!v) return;
+    ans.disabled = true;
+    try { await commitFiles([buildFile(id, 'resume', v)], `rm-inbox: answer for ${id}`); ans.textContent = 'Sent'; pollLive(2500) }
+    catch (err) { ans.disabled = false; ans.textContent = 'Retry' }
+  }
+  if (rt) {
+    const m = (liveReq[rt.dataset.retry] || {}).m; if (!m) return;
+    rt.disabled = true;
+    try { await commitFiles([buildFile(m.slug, m.kind, m.note || '', m.item ? { item: m.item } : {})], `rm-inbox: retry ${m.slug}`); rt.textContent = 'Queued'; pollLive(2500) }
+    catch (err) { rt.disabled = false; rt.textContent = 'Retry failed — tap again' }
+  }
+});
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pollLive(300) });
+
 // ---------- setup ----------
 function boot() {
   const c = cfg();
@@ -114,7 +217,7 @@ function boot() {
   $('setup').classList.toggle('hide', on); $('app').classList.toggle('hide', !on);
   $('repoLbl').textContent = on ? `${c.repo} · ${c.branch}` : '';
   $('who').textContent = '';
-  if (on) { showTab(store.get(K.tab) || 'today'); api('/user').then(u => $('who').textContent = '@' + u.login).catch(() => {}) }
+  if (on) { pollLive(800); showTab(store.get(K.tab) || 'today'); api('/user').then(u => $('who').textContent = '@' + u.login).catch(() => {}) }
 }
 $('connect').onclick = async () => {
   const tok = $('tok').value.trim(), repo = $('repo').value.trim().replace(/^https:\/\/github\.com\//, '').replace(/\/$/, ''), branch = $('branch').value.trim() || 'main';
@@ -469,18 +572,17 @@ async function sendStory(build) {
     }
     files.push({ path: `news/inbox/${slug}/meta.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') });
     if (build) {
-      const ts = new Date(Date.now() + 5.5 * 3600e3).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-      files.push({ path: `studio/schedule/build/build-${ts}-${slug}.json`, b64: b64utf8(JSON.stringify({ slug, kind, note, added: new Date().toISOString(), status: 'pending', by: 'rm-inbox' }, null, 2) + '\n') });
+      files.push(buildFile(slug, kind, note));
     }
     const what = shots.length ? `${shots.length} screenshot${shots.length > 1 ? 's' : ''}` : 'link';
     await commitFiles(files, `inbox: news ${slug} (${what}${meta.url && shots.length ? ' + link' : ''}${meta.cover_ref ? ' + cover art' : ''})${build ? ' · build now' : ''}`, p => bar('newsBar', p));
     msg('newsMsg', 'ok', build
-      ? `Sent, and the ${esc(kind)} is building on GitHub now (about 30–60 minutes). Watch it in <b>Newsroom → Schedule</b>; it lands in <b>Studio</b>.`
+      ? `Sent, and the ${esc(kind)} is building on GitHub now (about 30–60 minutes). Follow it in the bar at the top; it lands in <b>Studio</b>.`
       : `Saved to <code>news/inbox/${esc(slug)}/</code>.${meta.url ? ' The studio reads the article from the link within a minute.' : ''} Run <code>/${esc(kind || 'carousel')} ${esc(slug)}</code> in Claude, or tap Send &amp; build now next time.`);
     shots.forEach(s => URL.revokeObjectURL(s.url)); shots = []; drawThumbs();
     $('aurl').value = ''; $('nkind').value = ''; $('nNote').value = '';
     if (nArt) { URL.revokeObjectURL(nArt.url); nArt = null; $('nArtPrev').classList.add('hide'); $('nArtPrev').innerHTML = '' }
-    nArtId = ''; drawPicks(); validateNews();
+    nArtId = ''; drawPicks(); validateNews(); if (build) pollLive(2500);
   } catch (e) { msg('newsMsg', 'err', esc(e.message)); validateNews() }
   bar('newsBar', null);
 }
@@ -701,6 +803,23 @@ async function playReel(el, r) {
   });
 }
 $('reelRefresh').onclick = loadReels;
+// Fix / rate a carousel or poster from Studio (editor 2026-11-26): a build-now request of kind revise | rate
+document.addEventListener('click', async e => {
+  const f = e.target.closest('[data-fix]'), fs = e.target.closest('[data-fixsend]'), rt = e.target.closest('[data-rate]');
+  if (f) { $('fixP' + f.dataset.fix).classList.toggle('hide'); $('fixT' + f.dataset.fix).focus(); return }
+  if (!fs && !rt) return;
+  const ci = +(fs ? fs.dataset.fixsend : rt.dataset.ci), c = cars[ci], ta = $('fixT' + ci), note = ta ? ta.value.trim() : '', btn = fs || rt;
+  if (fs && !note) return msg('carMsg' + ci, 'err', 'Write what to change first.');
+  btn.disabled = true;
+  try {
+    const kind = fs ? 'revise' : 'rate', n = fs ? note : `${rt.dataset.rate}${note ? ' — ' + note : ''}`;
+    await commitFiles([buildFile(c.slug, kind, n)], `rm-inbox: ${kind} ${c.slug}`);
+    msg('carMsg' + ci, 'ok', fs ? 'Sent — the studio applies the fix and re-renders it (follow it in the bar at the top).' : `Marked ${esc(rt.dataset.rate.replace('-', ' '))} — the studio learns from it.`);
+    if (fs) { ta.value = ''; $('fixP' + ci).classList.add('hide') }
+    pollLive(2500);
+  } catch (err) { msg('carMsg' + ci, 'err', esc(err.message)) }
+  btn.disabled = false;
+});
 // Delete a post from Studio (editor 2026-11-26): its studio/previews/index.json entry + its preview files, in one commit.
 // The source reel / carousel / poster folder stays (re-running its preview brings it back). Older versions of a post are
 // pruned by the studio itself (engine/previews.py) after every render.
@@ -744,6 +863,9 @@ function drawCarousels() {
         <div class="tagrow" style="margin-top:2px"><span class="tag">${c.slides.length} slides</span><span class="tag">${esc(c.theme || '')}</span></div>
         <div class="meta"><span>${esc(c.slug)} · audit ${st(c.audit)}</span></div>
         <div class="acts"><button class="btn ghost small danger" data-pdel="${esc(c.slug)}" style="flex:none">Delete</button><button class="btn primary small" data-share="${ci}">${ready[cars[ci].slug + cars[ci].rendered] ? `Open share sheet · ${cars[ci].slides.length} ready` : 'Post to Instagram'}</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
+        <div class="acts"><button class="btn ghost small" data-fix="${ci}">Fix…</button><button class="btn ghost small" data-rate="published" data-ci="${ci}">Published</button><button class="btn ghost small" data-rate="not-published" data-ci="${ci}">Not posted</button></div>
+        <div class="fixp hide" id="fixP${ci}"><textarea id="fixT${ci}" placeholder="What to change — e.g. slide 3 headline shorter, cover darker, swap slides 4 and 5"></textarea>
+          <div style="height:8px"></div><button class="btn primary small" data-fixsend="${ci}" style="width:100%">Send fix &amp; rebuild</button></div>
         <div class="msg" id="carMsg${ci}"></div></div></div>`).join('');
   cars.forEach((c, ci) => c.slides.forEach((s, i) => {
     const key = c.slug + '/' + i, el = document.querySelector(`.sl[data-ci="${ci}"][data-si="${i}"]`);
@@ -992,10 +1114,9 @@ async function pickRunArt(slot, bmid, btn) {
 async function buildRun(slot) {
   const R = RUNS[slot], btn = $(R.go); btn.disabled = true; btn.textContent = 'Sending…';
   try {
-    const ts = new Date(Date.now() + 5.5 * 3600e3).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15), slug = `${slot}-${istDay()}`;
-    await commitFiles([{ path: `studio/schedule/build/build-${ts}-${slug}.json`, b64: b64utf8(JSON.stringify({ slug, kind: slot, note: '', added: new Date().toISOString(), status: 'pending', by: 'rm-inbox' }, null, 2) + '\n') }],
-      `rm-inbox: build ${slug} now`);
-    msg(R.msg, 'ok', `Building on GitHub now (about 30–60 minutes). It lands in <b>Studio</b>; progress in Newsroom → Schedule.`);
+    const slug = `${slot}-${istDay()}`;
+    await commitFiles([buildFile(slug, slot)], `rm-inbox: build ${slug} now`);
+    msg(R.msg, 'ok', 'Building on GitHub now (about 30–60 minutes) — follow it in the bar at the top; it lands in <b>Studio</b>.'); pollLive(2500);
   } catch (e) { msg(R.msg, 'err', esc(e.message)) }
   btn.disabled = false; btn.textContent = 'Build now';
 }
@@ -1037,17 +1158,18 @@ function drawBrief(b, path) {
     try { await navigator.clipboard.writeText(t); $('nowCopy').textContent = 'Copied' } catch { $('nowCopy').textContent = 'Copy failed' }
   };
 }
-async function briefToPost(btn) {
+async function briefToPost(btn) {                    // builds now on GitHub (build-now), not at the next scheduler slot
   if (!nowBrief) return;
   btn.disabled = true;
-  const d = new Date(Date.now() + 5.5 * 3600e3).toISOString(), at = `${d.slice(0, 10)} ${d.slice(11, 16)}`;
-  const links = (nowBrief.b.points || []).map(p => ((p.sources || [])[0] || {}).url).filter(Boolean);
+  const b = nowBrief.b, stamp13 = new Date(Date.now() + 5.5 * 3600e3).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 13);
+  const slug = `top5-${stamp13}`, leads = (b.points || []).flatMap(p => (p.sources || []).map(s => s.url)).filter(Boolean);
   try {
-    await commitFiles([{ path: `studio/schedule/queue/sched-${Date.now()}.json`, b64: b64utf8(JSON.stringify({ kind: 'carousel', run_at: at, tz: 'Asia/Kolkata', links,
-      brief: `Carousel from the Top 5 brief ${nowBrief.path}: the five points, one slide each, in that order.`, artwork: [], added: new Date().toISOString() }, null, 2) + '\n') }],
-      'rm-inbox: carousel from the Top 5 brief');
-    msg('nowMsg', 'ok', 'Scheduled as a carousel — it starts at the studio’s next check (7:45, 12:45, 5:45 or 9:45 pm IST) and lands in Studio. See Newsroom → Schedule.');
-    setTimeout(loadPlan, 2500);
+    const meta = { story: b.headline || 'Top 5', url: '', kind: 'carousel', notes: `Carousel from the Top 5 brief ${nowBrief.path}: the five points, one slide each, in that order.`,
+      images: [], leads, added: new Date().toISOString() };
+    await commitFiles([{ path: `news/inbox/${slug}/meta.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') }, buildFile(slug, 'carousel', meta.notes)],
+      'rm-inbox: carousel from the Top 5 brief, build now');
+    msg('nowMsg', 'ok', 'Building the carousel on GitHub now — follow it in the bar at the top; it lands in Studio.');
+    pollLive(2500);
   } catch (e) { msg('nowMsg', 'err', esc(e.message)); btn.disabled = false }
 }
 $('nowGo').onclick = async () => {
