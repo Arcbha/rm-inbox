@@ -2,10 +2,10 @@
 
 A static page that feeds the Rupee Mechanics studio. Five tabs in a bottom bar:
 
-- **Today** — Market now (Top 5 now), the pre-market post switch, what's coming up, artwork saved for posts.
-- **Add** — one place to send anything: Bookmark · News · Reference · Artwork · Schedule. Sharing a link from the phone asks: Bookmark, Teach the AI, or News story.
-- **Saved** — your bookmarks (links and screenshots of videos and art you like). Private: the studio never reads them.
-- **Studio** — rendered carousels and reels.
+- **Pre & Post** — Market now (Top 5 now), the pre-market (7:45 IST) and post-market (5:45 pm IST) post switches, and for each a cover artwork picked from Saved Artwork.
+- **Newsroom** — News (link and/or screenshots, Make a, note, cover art reference: upload or Saved Artwork, Send / Send & build now) · Schedule (+ the scheduled list) · Reference. Sharing a link from the phone asks: Bookmark, Teach the AI, or News story.
+- **Saved Artwork** — Artwork (save a picture for a post + the shelf) · Bookmarks (links and screenshots you like; private, the studio never reads them).
+- **Studio** — rendered carousels and reels, newest version of each post only (the studio prunes older ones); **Delete** removes a post's preview.
 - **More** — the reference library, what you sent, studio status, Forget token.
 
 - No build step, no secrets. `index.html` + `app.js`.
@@ -22,12 +22,13 @@ A static page that feeds the Rupee Mechanics studio. Five tabs in a bottom bar:
 
 Carousels rendered by `engine/carousel.py` appear above the reels: swipe the slides, tap ▶ on a video slide, **Share / Save** sends the full-size slides (PNG + MP4, in order) to the phone's share sheet — *Save to Photos* or straight into Instagram — and **Copy caption** copies the post text.
 
-## Plan tab
+## Pre & Post · Saved Artwork · Schedule
 
-- **Pre-market post** — on/off switch for the 7:45 IST market-day post (ET, Mint and Google News → the 4–5 things that matter before 9:15 → a carousel in Studio). Writes `studio/schedule/recurring.json`.
-- **Save artwork** — one picture, short video or PDF for a later post: the next morning post, a post on a date, or just the shelf; used as cover, WILD slide, a slide, or Claude decides. Writes `studio/artwork/queue/<stem>.<ext>` + `<stem>.json`.
-- **Schedule a post** — carousel, poster, reel (visuals) or custom, at a date and time (IST), with story links, a brief and artwork from the shelf. Writes `studio/schedule/queue/sched-<ms>.json`.
-- **Coming up** and **Artwork shelf** read `studio/schedule/items/` and `studio/artwork/*/art.json` (cancel / remove from there).
+- **Pre-market / Post-market post** — on/off switches (`studio/schedule/recurring.json` → `runs[id=premarket|postmarket].enabled`). The artwork picker rewrites `studio/artwork/<id>/art.json` to `use_on: "next"`, `slot: "premarket|postmarket"`, `for: "cover"` (one per post; tap again to clear).
+- **Save artwork** — one picture, short video or PDF for a later post: the next pre/post-market post, a post on a date, or just the shelf; used as cover, WILD slide, a slide, or Claude decides. Writes `studio/artwork/queue/<stem>.<ext>` + `<stem>.json`.
+- **Schedule a post** — carousel, poster, reel (visuals) or custom, at a date and time (IST), with story links, a brief and artwork from the shelf. Writes `studio/schedule/queue/sched-<ms>.json`; the Scheduled list below it reads `studio/schedule/items/` (cancel / remove).
+- **News cover art from Saved Artwork** — the shelf file's blob is reused (no upload) at `studio/editor-assets/<slug>/cover-inspiration.<ext>`; meta.json gets `cover_ref` + `cover_art: <id>`.
+- **Studio → Delete** — one commit: the slug's `studio/previews/index.json` entry and its preview files.
 
 Finance_Repo's news Action files the queues (`engine/schedule.py ingest`) and the RM scheduler task runs them. News links alone are enough on the News tab (the studio reads the article).
 - **Market now → Top 5 now** — one tap (optional focus note): Finance_Repo's `market-now` Action runs Claude Code on the news and the 5 points for this moment appear here in about 3 minutes; *Make it a carousel* schedules a post from them. Needs the `CLAUDE_CODE_OAUTH_TOKEN` secret on Finance_Repo once (`claude setup-token`).
