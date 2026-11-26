@@ -115,7 +115,25 @@ function buildFile(slug, kind, note = '', extra = {}) {
     b64: b64utf8(JSON.stringify({ slug, kind, note, ...extra, added: new Date().toISOString(), status: 'pending', by: 'rm-inbox' }, null, 2) + '\n') };
 }
 const KIND_WORD = { carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', revise: 'Fix', rate: 'Rating', resume: 'Answer' };
-let liveTimer = null, liveOpen = false, liveReq = {}, liveJobs = {}, liveBusy = false;
+let liveTimer = null, liveOpen = false, liveReq = {}, liveJobs = {}, liveBusy = false, chatJobs = [], chatScan = 0;
+// Questions from chat sessions (editor 2026-11-26: "can a prompt come in the app to go and check the Claude app"): a chat run
+// that stops for the editor (jobs.py block) pushes its job file to its own claude/* branch with where: "chat" + session_url.
+// One GraphQL call (every 2 min) reads studio/jobs on the 12 most recently updated claude/* branches.
+async function scanChatJobs() {
+  const [o, n] = cfg().repo.split('/');
+  const q = `query($o:String!,$n:String!){repository(owner:$o,name:$n){refs(refPrefix:"refs/heads/claude/",first:12,orderBy:{field:TAG_COMMIT_DATE,direction:DESC}){nodes{name target{... on Commit{committedDate file(path:"studio/jobs"){object{... on Tree{entries{name object{... on Blob{text}}}}}}}}}}}}`;
+  const r = await api('/graphql', { method: 'POST', body: JSON.stringify({ query: q, variables: { o, n } }) });
+  const out = [];
+  for (const b of (((r.data || {}).repository || {}).refs || {}).nodes || []) {
+    const t = b.target || {};
+    if (!t.committedDate || Date.now() - Date.parse(t.committedDate) > 3 * 864e5) continue;
+    for (const e of ((t.file || {}).object || {}).entries || []) {
+      if (!e.name.endsWith('.json') || !e.object || !e.object.text) continue;
+      try { const j = JSON.parse(e.object.text); if (j.status === 'blocked') out.push({ ...j, branch: b.name }) } catch {}
+    }
+  }
+  return out;
+}
 const mins = iso => Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
 const dur = m => m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
 async function dirList(path) {
@@ -150,7 +168,14 @@ async function loadLive() {
       if ((st === 'done' && age > 90) || (st === 'failed' && age > 720) || st === 'running' && !L && age > 180) continue;
       rows.push({ st, name, m, L });
     }
+    if (Date.now() - chatScan > 120000) { chatScan = Date.now(); chatJobs = await scanChatJobs().catch(() => chatJobs) }
+    const mainJobs = Object.fromEntries(Object.values(liveJobs).filter(j => j.m).map(j => [j.m.id, j.m]));
     const blocked = Object.values(liveJobs).filter(j => j.m && j.m.status === 'blocked');
+    for (const j of chatJobs) {                          // newest copy wins: skip when main has it as recent or newer
+      const m = mainJobs[j.id];
+      if (m && (m.updated || '') >= (j.updated || '')) continue;
+      if (!blocked.some(x => x.m.id === j.id)) blocked.push({ m: j, chatOnly: true });
+    }
     drawLive(rows, blocked, lv);
     if (rows.some(r => ['running', 'pending'].includes(r.st))) next = 20000;
   } catch (e) { /* the bar stays as it was; the next poll retries */ }
@@ -166,7 +191,7 @@ function drawLive(rows, blocked, lv) {
   const lead = run[0], dot = run.length ? 'run' : blocked.length || lim.length || wait.length ? 'wait' : bad.length ? 'err' : 'ok';
   const what = r => `${esc(r.m.slug)}${r.L && r.L.agent ? ` · ${esc(r.L.agent)}` : ''}${r.L && r.L.stage ? ` · ${esc(r.L.stage)}` : ''}${r.L && r.L.progress ? ` ${esc(r.L.progress)}` : ''}`;
   const sum = lead ? `<b>Building</b> <span>${what(lead)} · ${dur(mins((lead.L && lead.L.started) || lead.m.added))}</span>`
-    : blocked.length ? `<b>Needs you</b> <span>${esc(blocked[0].m.id)}</span>`
+    : blocked.length ? `<b>Needs you</b> <span>${blocked[0].chatOnly ? 'check the Claude app · ' : ''}${esc(blocked[0].m.id)}</span>`
     : lim.length ? `<b>Paused</b> <span>usage limit — continues by itself</span>`
     : wait.length ? `<b>Starting</b> <span>${esc(wait[0].m.slug)}</span>`
     : bad.length ? `<b>Failed</b> <span>${esc(bad[0].m.slug)}</span>` : `<b>Ready</b> <span>${esc(done[0].m.slug)} — in Studio</span>`;
@@ -175,8 +200,13 @@ function drawLive(rows, blocked, lv) {
   const title = r => `${esc(KIND_WORD[r.m.kind] || r.m.kind)} · ${esc(r.m.slug)}`;
   const row = (d, h, sub, extra = '') => `<div class="lrow"><span class="dot ${d}"></span><div class="b"><div class="h">${h}</div>${sub ? `<div class="d">${sub}</div>` : ''}${extra}</div></div>`;
   const out = [];
-  for (const j of blocked) out.push(row('wait', `Needs you · ${esc(j.m.id)}`, esc(j.m.blocked || 'waiting on you'),
-    `<div class="row2"><input placeholder="Your answer" data-ans-in="${esc(j.m.id)}"><button class="btn primary small" data-ans="${esc(j.m.id)}">Send</button></div>`));
+  for (const j of blocked) {
+    const open = `<a class="btn ${j.chatOnly ? 'primary' : 'ghost'} small" href="${esc(j.m.session_url || 'https://claude.ai/code')}" target="_blank" rel="noopener">Open the chat ↗</a>`;
+    out.push(j.chatOnly
+      ? row('wait', `Needs you in the Claude app · ${esc(j.m.id)}`, `${esc(j.m.blocked || 'waiting on you')}<br>This run is in a Claude chat — answer it there.`, `<div class="row2">${open}</div>`)
+      : row('wait', `Needs you · ${esc(j.m.id)}`, esc(j.m.blocked || 'waiting on you'),
+        `<div class="row2"><input placeholder="Your answer" data-ans-in="${esc(j.m.id)}"><button class="btn primary small" data-ans="${esc(j.m.id)}">Send</button>${j.m.where === 'chat' && j.m.session_url ? open : ''}</div>`));
+  }
   for (const r of run) {
     const L = r.L || {};
     out.push(row('run', title(r),
@@ -208,6 +238,154 @@ $('liveList').addEventListener('click', async e => {
   }
 });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pollLive(300) });
+
+// ---------- Edit sheet: change a carousel slide inside the app (editor 2026-11-26: "can this be prompted inside the app rather
+// than leaving the app to Claude … same goes for colour and all other changes") ----------
+// Words are the slide's own text fields from carousel.json (applied verbatim); an area is a box drawn on the slide (0–1 coords)
+// + an action; colour is a mood for the colorist or an exact colour the editor picks (recorded as the editor's palette, so the
+// colour gate holds). Everything goes in ONE revise request: studio/schedule/build/<stem>.json "edits" + the marked-up slide
+// PNGs next to it. The caption is saved straight away (no rebuild).
+const TEXT_KEYS = ['kicker', 'title', 'headline', 'subtitle', 'body', 'line', 'cta', 'label', 'caption_line', 'note'];
+const LIST_KEYS = ['copy', 'lines', 'points', 'bullets'];
+const AREA_ACTS = [['move', 'Move it'], ['bigger', 'Bigger'], ['smaller', 'Smaller'], ['crop', 'Crop to this'], ['remove', 'Remove'], ['replace', 'Replace picture'], ['fix', 'Fix this']];
+const MOODS = ['Warmer', 'Cooler', 'Darker', 'Lighter', 'More contrast', 'Softer', 'Different accent'];
+let ed = null;   // {ci, c, spec, specPath, i, slides: {n: {text: {}, areas: [], mood: Set, hex, pic}}, box}
+function slideText(sl) {
+  const out = [];
+  for (const k of TEXT_KEYS) if (typeof sl[k] === 'string' && sl[k].trim()) out.push({ field: k, old: sl[k] });
+  for (const k of LIST_KEYS) if (Array.isArray(sl[k])) sl[k].forEach((v, j) => { if (typeof v === 'string' && v.trim()) out.push({ field: `${k}[${j}]`, old: v }) });
+  return out;
+}
+const edSlide = n => (ed.slides[n] = ed.slides[n] || { text: {}, areas: [], mood: new Set(), hex: '', pic: null, note: '' });
+const edCount = () => Object.values(ed.slides).reduce((t, s) => t + Object.keys(s.text).length + s.areas.length + s.mood.size + (s.hex ? 1 : 0) + (s.pic ? 1 : 0) + (s.note ? 1 : 0), 0) + (ed.note ? 1 : 0);
+async function openEditor(ci) {
+  const c = cars[ci];
+  ed = { ci, c, spec: null, specPath: '', i: 0, slides: {}, box: null, note: '' };
+  $('edSheet').classList.remove('hide'); document.body.style.overflow = 'hidden';
+  $('edTitle').textContent = c.title || c.slug; clearMsg('edMsg');
+  for (const p of [`studio/carousels/${c.slug}/carousel.json`, `studio/posters/${c.slug}/poster.json`]) {
+    const j = await jsonAt(p); if (j) { ed.spec = j; ed.specPath = p; break }
+  }
+  $('edCap').value = c.caption || (ed.spec && ed.spec.caption) || '';
+  edDraw();
+}
+function closeEditor() { $('edSheet').classList.add('hide'); document.body.style.overflow = ''; ed = null }
+function edDraw() {
+  const c = ed.c, n = ed.i, s = edSlide(n), sl = (ed.spec && (ed.spec.slides || [ed.spec])[n]) || {};
+  $('edStrip').innerHTML = c.slides.map((x, i) => `<button type="button" class="edth${i === n ? ' on' : ''}${ed.slides[i] && edCountOf(i) ? ' has' : ''}" data-edi="${i}" style="background-image:url(${carImgs[c.slug + '/' + i] || ''})">${i + 1}</button>`).join('');
+  $('edImg').src = carImgs[c.slug + '/' + n] || '';
+  if (!carImgs[c.slug + '/' + n]) { const x = c.slides[n]; rawFile(x.type === 'video' ? x.poster : x.src, 'image/jpeg').then(b => { carImgs[c.slug + '/' + n] = URL.createObjectURL(b); if (ed && ed.i === n) $('edImg').src = carImgs[c.slug + '/' + n] }).catch(() => {}) }
+  edBoxes();
+  const words = slideText(sl);
+  $('edWords').innerHTML = words.map(w => `<label>${esc(w.field.replace(/\[(\d+)\]/, (_, k) => ' ' + (+k + 1)))}</label><textarea class="edw" data-field="${esc(w.field)}" rows="2">${esc(s.text[w.field] ? s.text[w.field].new : w.old)}</textarea>`).join('')
+    || '<p class="hint" style="margin:0">This slide’s words are part of its picture — mark the text on the slide and choose “Fix this”, then say the new words below.</p>';
+  $('edWords').querySelectorAll('.edw').forEach(t => t.oninput = () => {
+    const w = words.find(x => x.field === t.dataset.field), v = t.value;
+    if (v.trim() === w.old.trim()) delete s.text[w.field]; else s.text[w.field] = { field: w.field, old: w.old, new: v };
+    edSummary();
+  });
+  $('edMoods').innerHTML = MOODS.map(m => `<button type="button" class="tag${s.mood.has(m) ? ' on' : ''}" data-mood="${esc(m)}">${esc(m)}</button>`).join('');
+  $('edMoods').querySelectorAll('[data-mood]').forEach(b => b.onclick = () => { const m = b.dataset.mood; s.mood.has(m) ? s.mood.delete(m) : s.mood.add(m); edDraw() });
+  $('edHexOn').checked = !!s.hex; $('edHex').value = s.hex || '#888888'; $('edHex').disabled = !s.hex;
+  $('edSlideNote').value = s.note || '';
+  $('edPicName').textContent = s.pic ? s.pic.file.name : '';
+  edSummary();
+}
+const edCountOf = i => { const s = ed.slides[i]; return s ? Object.keys(s.text).length + s.areas.length + s.mood.size + (s.hex ? 1 : 0) + (s.pic ? 1 : 0) + (s.note ? 1 : 0) : 0 };
+function edBoxes() {
+  const s = edSlide(ed.i);
+  $('edMarks').innerHTML = s.areas.map((a, k) => `<div class="edbox" style="left:${a.box[0] * 100}%;top:${a.box[1] * 100}%;width:${a.box[2] * 100}%;height:${a.box[3] * 100}%"><span>${k + 1}</span></div>`).join('')
+    + (ed.box ? `<div class="edbox new" style="left:${ed.box[0] * 100}%;top:${ed.box[1] * 100}%;width:${ed.box[2] * 100}%;height:${ed.box[3] * 100}%"></div>` : '');
+  $('edActs').classList.toggle('hide', !ed.box);
+  $('edAreas').innerHTML = s.areas.map((a, k) => `<div class="edarea"><b>${k + 1}</b> ${esc(AREA_ACTS.find(x => x[0] === a.action)[1])}${a.note ? ' — ' + esc(a.note) : ''}<button type="button" data-adel="${k}">×</button></div>`).join('');
+  $('edAreas').querySelectorAll('[data-adel]').forEach(b => b.onclick = () => { s.areas.splice(+b.dataset.adel, 1); edBoxes(); edSummary() });
+}
+function edSummary() {
+  const n = edCount();
+  $('edSend').disabled = !n; $('edSend').textContent = n ? `Send ${n} change${n > 1 ? 's' : ''} & rebuild` : 'Send changes & rebuild';
+  document.querySelectorAll('#edStrip .edth').forEach(b => b.classList.toggle('has', !!edCountOf(+b.dataset.edi)));
+}
+// draw a box on the slide (touch or mouse)
+(() => {
+  const wrap = () => $('edStage');
+  let start = null;
+  const pt = e => { const r = wrap().getBoundingClientRect(), t = e.touches ? e.touches[0] : e; return [Math.min(1, Math.max(0, (t.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (t.clientY - r.top) / r.height))] };
+  const down = e => { if (!ed) return; e.preventDefault(); start = pt(e); ed.box = [start[0], start[1], 0, 0]; edBoxes() };
+  const move = e => { if (!start || !ed) return; e.preventDefault(); const p = pt(e); ed.box = [Math.min(start[0], p[0]), Math.min(start[1], p[1]), Math.abs(p[0] - start[0]), Math.abs(p[1] - start[1])]; edBoxes() };
+  const up = () => { if (!start || !ed) return; start = null; if (ed.box && (ed.box[2] < .03 || ed.box[3] < .03)) { ed.box = [Math.max(0, ed.box[0] - .08), Math.max(0, ed.box[1] - .06), .16, .12] } edBoxes(); $('edActNote').focus() };
+  document.addEventListener('DOMContentLoaded', () => {});
+  const st = document.getElementById('edStage');
+  st.addEventListener('touchstart', down, { passive: false }); st.addEventListener('touchmove', move, { passive: false }); st.addEventListener('touchend', up);
+  st.addEventListener('mousedown', down); window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+})();
+$('edActBtns').innerHTML = AREA_ACTS.map(([k, l]) => `<button type="button" class="tag" data-act="${k}">${l}</button>`).join('');
+$('edActBtns').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b || !ed || !ed.box) return;
+  const s = edSlide(ed.i);
+  s.areas.push({ box: ed.box.map(v => +v.toFixed(3)), action: b.dataset.act, note: $('edActNote').value.trim() });
+  if (b.dataset.act === 'replace') $('edPic').click();
+  ed.box = null; $('edActNote').value = ''; edBoxes(); edSummary();
+});
+$('edStrip').addEventListener('click', e => { const b = e.target.closest('[data-edi]'); if (b && ed) { ed.i = +b.dataset.edi; ed.box = null; edDraw() } });
+$('edHexOn').onchange = () => { const s = edSlide(ed.i); s.hex = $('edHexOn').checked ? $('edHex').value : ''; $('edHex').disabled = !s.hex; edSummary() };
+$('edHex').oninput = () => { const s = edSlide(ed.i); if ($('edHexOn').checked) s.hex = $('edHex').value; edSummary() };
+$('edSlideNote').oninput = () => { edSlide(ed.i).note = $('edSlideNote').value.trim(); edSummary() };
+$('edNote').oninput = () => { ed.note = $('edNote').value.trim(); edSummary() };
+$('edPicBtn').onclick = () => $('edPic').click();
+$('edPic').onchange = () => { const f = $('edPic').files[0]; if (f && ed) { edSlide(ed.i).pic = { file: f }; $('edPicName').textContent = f.name; edSummary() } $('edPic').value = '' };
+$('edClose').onclick = () => { if (ed && edCount() && !armTap($('edClose'), 'Discard?')) return; closeEditor() };
+$('edCapSave').onclick = async () => {
+  if (!ed) return;
+  const cap = $('edCap').value, btn = $('edCapSave'), c = ed.c; btn.disabled = true;
+  try {
+    const { repo } = cfg();
+    await commitFiles([], `rm-inbox: caption for ${c.slug}`, null, async head => {
+      const out = [];
+      const ix = JSON.parse(utf8b64((await api(`/repos/${repo}/contents/studio/previews/index.json?ref=${head}`)).content));
+      (ix.carousels || []).forEach(x => { if (x.slug === c.slug) x.caption = cap });
+      out.push({ path: 'studio/previews/index.json', b64: b64utf8(JSON.stringify(ix, null, 1) + '\n') });
+      if (ed.specPath) {
+        const sp = JSON.parse(utf8b64((await api(`/repos/${repo}/contents/${ed.specPath}?ref=${head}`)).content));
+        sp.caption = cap; (sp.editorOverrides = sp.editorOverrides || {}).caption = 'edited by the editor in RM Inbox';
+        out.push({ path: ed.specPath, b64: b64utf8(JSON.stringify(sp, null, 2) + '\n') });
+      }
+      return out;
+    });
+    c.caption = cap; msg('edMsg', 'ok', 'Caption saved.');
+  } catch (e) { msg('edMsg', 'err', esc(e.message)) }
+  btn.disabled = false;
+};
+// a copy of the slide with the marked boxes drawn on it, so the studio sees exactly what was pointed at
+async function markedPng(n, areas) {
+  const src = carImgs[ed.c.slug + '/' + n]; if (!src || !areas.length) return null;
+  const img = new Image(); img.src = src; await img.decode();
+  const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+  const g = cv.getContext('2d'); g.drawImage(img, 0, 0);
+  g.lineWidth = Math.max(4, cv.width / 160); g.font = `700 ${Math.round(cv.width / 18)}px sans-serif`;
+  areas.forEach((a, k) => { const [x, y, w, h] = [a.box[0] * cv.width, a.box[1] * cv.height, a.box[2] * cv.width, a.box[3] * cv.height];
+    g.strokeStyle = '#ff3b30'; g.strokeRect(x, y, w, h); g.fillStyle = '#ff3b30'; g.fillText(String(k + 1), x + 8, y + cv.width / 16) });
+  return (await new Promise(r => cv.toBlob(r, 'image/png')));
+}
+$('edSend').onclick = async () => {
+  if (!ed || !edCount()) return;
+  const btn = $('edSend'), c = ed.c; btn.disabled = true; msg('edMsg', 'info', 'Sending…');
+  try {
+    const f = buildFile(c.slug, 'revise', ed.note || 'Edits from the RM Inbox edit sheet — see "edits".'), stem = f.path.replace(/\.json$/, '');
+    const files = [], edits = { slides: [], note: ed.note };
+    for (const [n, s] of Object.entries(ed.slides)) {
+      if (!edCountOf(+n)) continue;
+      const e = { slide: +n + 1, text: Object.values(s.text), areas: s.areas, colour: { moods: [...s.mood], hex: s.hex || null }, note: s.note };
+      const png = await markedPng(+n, s.areas);
+      if (png) { e.marked = `${stem}-slide${+n + 1}.png`; files.push({ path: e.marked, b64: await readB64(png) }) }
+      if (s.pic) { const ext = (s.pic.file.name.split('.').pop() || 'jpg').toLowerCase(); e.picture = `${stem}-slide${+n + 1}-picture.${ext}`; files.push({ path: e.picture, b64: await readB64(s.pic.file) }) }
+      edits.slides.push(e);
+    }
+    const req = JSON.parse(decodeURIComponent(escape(atob(f.b64)))); req.edits = edits;
+    files.push({ path: f.path, b64: b64utf8(JSON.stringify(req, null, 2) + '\n') });
+    await commitFiles(files, `rm-inbox: edit ${c.slug} (${edCount()} change${edCount() > 1 ? 's' : ''})`);
+    closeEditor(); msg('carMsg' + cars.indexOf(c), 'ok', 'Sent — the studio makes these changes and re-renders (follow it in the bar at the top).'); pollLive(2500);
+  } catch (e) { msg('edMsg', 'err', esc(e.message)); btn.disabled = false }
+};
 
 // ---------- setup ----------
 function boot() {
@@ -274,7 +452,7 @@ let sw = null;
 const curPane = () => document.querySelector(`[data-pane="${store.get(K.tab) || 'today'}"]`);
 document.addEventListener('touchstart', e => {
   const t = e.target;
-  if (e.touches.length !== 1 || !cfg().tok || t.closest('select,video,.strip,[data-noswipe]') ||
+  if (e.touches.length !== 1 || !cfg().tok || t.closest('select,video,.strip,.sheet,.lightbox,[data-noswipe]') ||
     (t.closest('input,textarea') && t.closest('input,textarea') === document.activeElement)) { sw = null; return }
   sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now(), axis: '', dx: 0, pane: curPane() };
 }, { passive: true });
@@ -806,6 +984,7 @@ $('reelRefresh').onclick = loadReels;
 // Fix / rate a carousel or poster from Studio (editor 2026-11-26): a build-now request of kind revise | rate
 document.addEventListener('click', async e => {
   const f = e.target.closest('[data-fix]'), fs = e.target.closest('[data-fixsend]'), rt = e.target.closest('[data-rate]');
+  const ed0 = e.target.closest('[data-edit]'); if (ed0) return openEditor(+ed0.dataset.edit);
   if (f) { $('fixP' + f.dataset.fix).classList.toggle('hide'); $('fixT' + f.dataset.fix).focus(); return }
   if (!fs && !rt) return;
   const ci = +(fs ? fs.dataset.fixsend : rt.dataset.ci), c = cars[ci], ta = $('fixT' + ci), note = ta ? ta.value.trim() : '', btn = fs || rt;
@@ -863,9 +1042,7 @@ function drawCarousels() {
         <div class="tagrow" style="margin-top:2px"><span class="tag">${c.slides.length} slides</span><span class="tag">${esc(c.theme || '')}</span></div>
         <div class="meta"><span>${esc(c.slug)} · audit ${st(c.audit)}</span></div>
         <div class="acts"><button class="btn ghost small danger" data-pdel="${esc(c.slug)}" style="flex:none">Delete</button><button class="btn primary small" data-share="${ci}">${ready[cars[ci].slug + cars[ci].rendered] ? `Open share sheet · ${cars[ci].slides.length} ready` : 'Post to Instagram'}</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
-        <div class="acts"><button class="btn ghost small" data-fix="${ci}">Fix…</button><button class="btn ghost small" data-rate="published" data-ci="${ci}">Published</button><button class="btn ghost small" data-rate="not-published" data-ci="${ci}">Not posted</button></div>
-        <div class="fixp hide" id="fixP${ci}"><textarea id="fixT${ci}" placeholder="What to change — e.g. slide 3 headline shorter, cover darker, swap slides 4 and 5"></textarea>
-          <div style="height:8px"></div><button class="btn primary small" data-fixsend="${ci}" style="width:100%">Send fix &amp; rebuild</button></div>
+        <div class="acts"><button class="btn ghost small" data-edit="${ci}">Edit…</button><button class="btn ghost small" data-rate="published" data-ci="${ci}">Published</button><button class="btn ghost small" data-rate="not-published" data-ci="${ci}">Not posted</button></div>
         <div class="msg" id="carMsg${ci}"></div></div></div>`).join('');
   cars.forEach((c, ci) => c.slides.forEach((s, i) => {
     const key = c.slug + '/' + i, el = document.querySelector(`.sl[data-ci="${ci}"][data-si="${i}"]`);
