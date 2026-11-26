@@ -51,7 +51,7 @@ async function api(path, opts = {}) {
   const { tok } = cfg();
   let r;
   try {
-    r = await fetch(API + path, { ...opts, headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', Authorization: 'Bearer ' + tok, ...(opts.body ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers || {}) } });
+    r = await fetch(API + path, { cache: 'no-store', ...opts, headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', Authorization: 'Bearer ' + tok, ...(opts.body ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers || {}) } });
   } catch { throw new GhError(0) }
   if (r.status === 204) return null;
   const txt = await r.text();
@@ -414,9 +414,9 @@ $('forget').onclick = () => { if (armTap($('forget'), 'Tap again to forget')) { 
 // ---------- tabs ----------
 // five tabs (editor 2026-11-26): Pre & Post · Newsroom · Saved Artwork · Studio · More (ids stay today/add/saved so saved tabs survive)
 let statusTimer = null;
-const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Bookmarks', studio: 'Studio', more: 'More' };
-const OLDTAB = { refs: 'add', news: 'add', plan: 'today', library: 'more', status: 'more' };
-const SUBS = { add: ['news', 'schedule', 'reference'], more: ['library', 'mine', 'status'] };
+const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Bookmarks', studio: 'Studio', learn: 'References', more: 'More' };
+const OLDTAB = { refs: 'learn', news: 'add', plan: 'today', library: 'more', status: 'more' };
+const SUBS = { add: ['news', 'schedule'], more: ['library', 'mine', 'status'] };
 const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes(v) ? v : SUBS[g][0] };
 function showTab(t) {
   t = OLDTAB[t] || t; if (!TITLE[t]) t = 'today';
@@ -701,8 +701,9 @@ document.addEventListener('paste', e => {
   const files = [...(e.clipboardData || {}).items || []].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
   if (!files.length) return;
   if (tab === 'saved') { e.preventDefault(); return addBm(files) }
-  if (tab !== 'add' || !['news', 'reference'].includes(sub)) return;
-  e.preventDefault(); sub === 'news' ? addImages(files) : addUploads(files)
+  if (tab === 'learn') { e.preventDefault(); return addUploads(files) }
+  if (tab !== 'add' || sub !== 'news') return;
+  e.preventDefault(); addImages(files)
 });
 const blobB64 = b => readB64(b);
 // optional cover-art reference for this story → Finance_Repo studio/editor-assets/<slug>/cover-inspiration.<ext>
@@ -1192,7 +1193,7 @@ async function deleteRef(btn, id) {
   } catch (e) { msg('libMsg', 'err', esc(e.message)); btn.disabled = false; show('libMsg') }
 }
 $('libQ').oninput = drawLibrary;
-$('libAdd').onclick = () => { showTab('add'); showSub('add', 'reference') };
+$('libAdd').onclick = () => showTab('learn');
 
 $('upLearnWrap').innerHTML = learnSelect('auto', 'id="upLearn"');
 
@@ -1206,11 +1207,13 @@ const USE_AS = { cover: 'cover', wild: 'WILD slide', slide: 'a slide', any: 'Cla
 const KIND_NAME = { carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', custom: 'Custom' };
 const SLOT_NAME = { premarket: 'pre-market post', postmarket: 'post-market post', any: 'any post' };
 const useLine = a => (a.use_on === 'next' ? `next ${SLOT_NAME[a.slot] || 'post'}` : a.use_on ? `${fmtDate(a.use_on)} · ${SLOT_NAME[a.slot] || 'any post'}` : 'on the shelf') + ` · ${USE_AS[a.for] || a.for || ''}`;
-let shelf = [], bmArt = [], artPick = new Set(), planPaths = [], planSha = {}, planLoading = false;   // pickers list bookmarks with pictures (editor 2026-11-26)
+let shelf = [], bmArt = [], artPick = new Set(), planPaths = [], planSha = {}, planLoading = false, planAgain = false, runBusy = {}, pickBusy = false;   // pickers list bookmarks with pictures (editor 2026-11-26)
 const RUNS = { premarket: { hint: 'pmHint', btn: 'pmToggle', msg: 'pmMsg', art: 'pmArt', go: 'pmBuild', name: 'Pre-market' }, postmarket: { hint: 'poHint', btn: 'poToggle', msg: 'poMsg', art: 'poArt', go: 'poBuild', name: 'Post-market' } };
 
 async function loadPlan() {
-  if (!cfg().tok || planLoading) return; planLoading = true;
+  if (!cfg().tok) return;
+  if (planLoading) { planAgain = true; return }
+  planLoading = true; const t0 = Date.now();                 // a read that began before a tap never overwrites it
   try {
     const { repo, branch } = cfg();
     const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
@@ -1225,13 +1228,13 @@ async function loadPlan() {
       const lastRun = paths.filter(p => new RegExp(`^studio/schedule/runs/[^/]+-${id}\\.json$`).test(p)).sort().pop();
       const lr = lastRun ? await jsonAt(lastRun) : null;
       if (!run) { $(R.hint).textContent = 'Not set up on this branch yet.'; $(R.btn).disabled = true; $(R.btn).textContent = '—'; continue }
-      const on = run.enabled !== false;
-      $(R.hint).innerHTML = `<span class="pill ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span> Mon–Fri ${esc(run.at)} IST${lr ? ` · last run ${esc(fmtDate(lr.date))}: ${esc(lr.status)}` : ''}`;
-      $(R.btn).textContent = on ? 'Turn off' : 'Turn on'; $(R.btn).dataset.on = on ? '1' : ''; $(R.btn).disabled = false;
+      if (!runBusy[id] && (tapAt[id] || 0) < t0) setRunUI(id, run.enabled !== false, run);
+      if (lr) $(R.hint).innerHTML += ` · last run ${esc(fmtDate(lr.date))}: ${esc(lr.status)}`;
     }
     // artwork: shelf (newest 40) + uploads the Action hasn't filed yet
     const artJson = paths.filter(p => /^studio\/artwork\/[^/]+\/art\.json$/.test(p) && !p.startsWith('studio/artwork/queue/')).sort().reverse().slice(0, 40);
-    shelf = (await Promise.all(artJson.map(jsonAt))).filter(Boolean).sort((a, b) => (b.added || '').localeCompare(a.added || ''));
+    const fresh = (await Promise.all(artJson.map(jsonAt))).filter(Boolean).sort((a, b) => (b.added || '').localeCompare(a.added || ''));
+    if (!pickBusy && (tapAt.art || 0) < t0) shelf = fresh;
     const bmJson = paths.filter(p => /^bookmarks\/[^/]+\/bookmark\.json$/.test(p)).sort().reverse().slice(0, 60);
     const have = Object.fromEntries(bmArt.map(b => [b.id, b]));
     bmArt = (await Promise.all(bmJson.map(p => have[p.split('/')[1]] || jsonAt(p)))).filter(b => b && (b.images || []).length);
@@ -1246,10 +1249,19 @@ async function loadPlan() {
     drawUpcoming(items, schQ, builds);
   } catch (e) { msg('upMsg', 'err', esc(e.message)) }
   planLoading = false;
+  if (planAgain) { planAgain = false; loadPlan() }
 }
 
+let runOn = {}, tapAt = {};                                      // id → enabled, as last read or set
+function setRunUI(id, on, run) {
+  const R = RUNS[id]; runOn[id] = on;
+  $(R.hint).innerHTML = `<span class="pill ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span> Mon–Fri ${esc((run && run.at) || (id === 'premarket' ? '07:45' : '17:45'))} IST`;
+  $(R.btn).textContent = on ? 'Turn off' : 'Turn on'; $(R.btn).disabled = !!runBusy[id];
+}
 async function toggleRun(id) {
-  const R = RUNS[id], btn = $(R.btn), turnOn = !btn.dataset.on; btn.disabled = true;
+  if (runBusy[id] || !(id in runOn)) return;
+  const R = RUNS[id], turnOn = !runOn[id], was = runOn[id];
+  runBusy[id] = true; tapAt[id] = Date.now(); setRunUI(id, turnOn); $(R.btn).disabled = true; clearMsg(R.msg);
   try {
     const { repo } = cfg();
     await commitFiles([], `rm-inbox: ${id} post ${turnOn ? 'on' : 'off'}`, null, async head => {
@@ -1257,9 +1269,9 @@ async function toggleRun(id) {
       const j = JSON.parse(utf8b64(r.content)); (j.runs || []).forEach(x => { if (x.id === id) x.enabled = turnOn });
       return [{ path: 'studio/schedule/recurring.json', b64: b64utf8(JSON.stringify(j, null, 2) + '\n') }];
     });
-    msg(R.msg, 'ok', turnOn ? `On — the next market day builds it at ${id === 'premarket' ? '7:45' : '5:45 pm'} IST.` : `Off — no ${R.name.toLowerCase()} post until you turn it on again.`);
-  } catch (e) { msg(R.msg, 'err', esc(e.message)) }
-  await loadPlan();
+    msg(R.msg, 'ok', turnOn ? `On — every market day at ${id === 'premarket' ? '7:45 am' : '5:45 pm'} IST.` : `Off — no ${R.name.toLowerCase()} post until you turn it on again.`);
+  } catch (e) { setRunUI(id, was); msg(R.msg, 'err', esc(e.message)) }
+  runBusy[id] = false; $(R.btn).disabled = false;
 }
 $('pmToggle').onclick = () => toggleRun('premarket');
 $('poToggle').onclick = () => toggleRun('postmarket');
@@ -1272,22 +1284,43 @@ function bmArtFiles(b, aid, extra) {                 // a bookmark as a shelf ar
     by: 'rm-inbox', bookmark: b.id, added: new Date().toISOString(), ...extra };
   return [{ path: `studio/artwork/${aid}/${file}`, sha }, { path: `studio/artwork/${aid}/art.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') }];
 }
-async function pickRunArt(slot, bmid, btn) {
-  const R = RUNS[slot], cur = shelf.filter(a => slotArt(slot, a)), off = cur.some(a => a.bookmark === bmid);
-  btn.disabled = true;
+async function pickRunArt(slot, bmid) {            // bmid '' = no cover art
+  if (pickBusy) return;
+  const R = RUNS[slot], cur = shelf.filter(a => slotArt(slot, a)), b = bmArt.find(x => x.id === bmid);
+  if (cur.length === (b ? 1 : 0) && (!b || cur[0].bookmark === bmid)) return closeArtSheet();      // no change
+  pickBusy = true; tapAt.art = Date.now(); const before = shelf;
+  const files = [];
+  for (const a of cur) {
+    if (a.bookmark) planPaths.filter(p => p.startsWith(`studio/artwork/${a.id}/`)).forEach(path => files.push({ path, del: true }));
+    else files.push({ path: `studio/artwork/${a.id}/art.json`, b64: b64utf8(JSON.stringify({ ...a, use_on: null, slot: 'any' }, null, 2) + '\n') });
+  }
+  let added = [];
+  try { if (b) { added = bmArtFiles(b, `bm-${bmid}-${slot}`.slice(0, 80), { use_on: 'next', slot }); files.push(...added) } }
+  catch (e) { pickBusy = false; return msg(R.msg, 'err', esc(e.message)) }
+  // show the choice at once; the commit follows
+  shelf = shelf.filter(a => !cur.includes(a)).concat(b ? [{ id: `bm-${bmid}-${slot}`.slice(0, 80), bookmark: bmid, slot, use_on: 'next', status: 'saved', for: 'cover' }] : []);
+  closeArtSheet(); drawPicks(); msg(R.msg, 'info', 'Saving…');
   try {
-    const files = [];
-    for (const a of cur) {
-      if (a.bookmark) planPaths.filter(p => p.startsWith(`studio/artwork/${a.id}/`)).forEach(path => files.push({ path, del: true }));
-      else files.push({ path: `studio/artwork/${a.id}/art.json`, b64: b64utf8(JSON.stringify({ ...a, use_on: null, slot: 'any' }, null, 2) + '\n') });
-    }
-    const b = bmArt.find(x => x.id === bmid);
-    if (!off && b) files.push(...bmArtFiles(b, `bm-${bmid}-${slot}`.slice(0, 80), { use_on: 'next', slot }));
-    await commitFiles(files, `rm-inbox: ${off ? 'clear' : 'set'} ${slot} artwork (bookmark ${bmid})`);
-    msg(R.msg, 'ok', off ? 'Cleared — the studio makes its own cover.' : `Set — the next ${R.name.toLowerCase()} post uses it. Tap Build now to make it now.`);
-  } catch (e) { msg(R.msg, 'err', esc(e.message)) }
-  await loadPlan();
+    await commitFiles(files, `rm-inbox: ${b ? 'set' : 'clear'} ${slot} cover art${b ? ` (bookmark ${bmid})` : ''}`);
+    planPaths = planPaths.filter(p => !files.some(f => f.del && f.path === p)).concat(added.map(f => f.path));
+    msg(R.msg, 'ok', b ? `Set — the next ${R.name.toLowerCase()} post uses it.` : 'Cleared — the studio makes its own cover.');
+  } catch (e) { shelf = before; drawPicks(); msg(R.msg, 'err', esc(e.message)) }
+  pickBusy = false;
 }
+let artSheetSlot = '';
+function openArtSheet(slot) {
+  artSheetSlot = slot;
+  const cur = new Set(shelf.filter(a => slotArt(slot, a)).map(a => a.bookmark));
+  $('artSheetTitle').textContent = `${RUNS[slot].name} cover art`;
+  $('artGrid').innerHTML = `<button type="button" class="artpick none${cur.size ? '' : ' on'}" data-apick=""><span>No cover art<br><small>the studio makes its own</small></span></button>`
+    + bmArt.map(b => `<button type="button" class="artpick${cur.has(b.id) ? ' on' : ''}" data-apick="${esc(b.id)}"><img data-pick-img="${esc(b.id)}" alt="" src="${bmThumb[b.id] || ''}"><span>${esc((b.note || b.id).slice(0, 40))}</span></button>`).join('')
+    + (bmArt.length ? '' : '<p class="hint" style="grid-column:1/-1">No bookmarks with pictures yet — save one in Bookmarks.</p>');
+  $('artSheet').classList.remove('hide'); document.body.style.overflow = 'hidden';
+}
+function closeArtSheet() { $('artSheet').classList.add('hide'); document.body.style.overflow = '' }
+$('artGrid').addEventListener('click', e => { const x = e.target.closest('[data-apick]'); if (x && artSheetSlot) pickRunArt(artSheetSlot, x.dataset.apick) });
+$('artSheetClose').onclick = closeArtSheet;
+document.addEventListener('click', e => { const x = e.target.closest('[data-choose]'); if (x) openArtSheet(x.dataset.choose) });
 async function buildRun(slot) {
   const R = RUNS[slot], btn = $(R.go); btn.disabled = true; btn.textContent = 'Sending…';
   try {
@@ -1317,9 +1350,25 @@ async function loadNow(paths) {
   // newest finished brief (from any request)
   for (const r of reqs.slice(0, 6)) {
     const m = r === reqs[0] ? last : await jsonAt(r);
-    if (m && m.status === 'done' && m.result) { const b = await jsonAt(m.result); if (b) { drawBrief(b, m.result); return } }
+    if (m && m.status === 'done' && m.result) { const b = await jsonAt(m.result); if (b) { drawBrief(b, m.result); drawHistory(paths); return } }
   }
-  $('nowBrief').innerHTML = '';
+  $('nowBrief').innerHTML = ''; drawHistory(paths);
+}
+// earlier briefs (editor 2026-11-27: "an expand bar which when clicked shows the older information")
+let histOpen = false, histCache = {};
+function drawHistory(paths) {
+  const list = paths.filter(p => /^news\/morning\/\d{4}-\d\d-\d\d\/brief-\d{4}\.json$/.test(p) && (!nowBrief || p !== nowBrief.path)).sort().reverse();
+  if (!list.length) { $('nowHist').innerHTML = ''; return }
+  $('nowHist').innerHTML = `<button type="button" class="histbar" id="histBar"><span>Earlier briefs</span><span>${list.length} ${histOpen ? '▲' : '▼'}</span></button><div id="histList" class="${histOpen ? '' : 'hide'}"></div>`;
+  $('histBar').onclick = () => { histOpen = !histOpen; drawHistory(paths) };
+  if (histOpen) fillHistory(list.slice(0, 15));
+}
+async function fillHistory(list) {
+  const el = $('histList'); if (!el) return;
+  el.innerHTML = '<div class="empty">Loading…</div>';
+  const items = await Promise.all(list.map(async p => histCache[p] || (histCache[p] = await jsonAt(p))));
+  el.innerHTML = items.map((b, i) => !b ? '' : `<details class="hist"><summary><span class="when">${esc(fmtDate(b.date || list[i].split('/')[2]))} · ${esc(b.time_ist || '')} IST${b.market_phase ? ' · ' + esc(b.market_phase) : ''}</span><b>${esc(b.headline || '')}</b></summary>
+    <ol>${(b.points || []).map(pt => `<li><b>${esc(pt.title)}</b><div class="w">${esc(pt.what || '')}</div>${pt.why ? `<div class="y">${esc(pt.why)}</div>` : ''}</li>`).join('')}</ol></details>`).join('');
 }
 function drawBrief(b, path) {
   nowBrief = { b, path };
@@ -1382,10 +1431,10 @@ const pickBtn = (b, on, attr) => `<button type="button" class="tag${on ? ' on' :
 function drawPicks() {
   const none = '<div class="empty">No bookmarks with pictures yet — save one in Bookmarks.</div>';
   bmArt.forEach(bmThumbFor);
-  for (const [slot, R] of Object.entries(RUNS)) {
-    const on = new Set(shelf.filter(a => slotArt(slot, a)).map(a => a.bookmark));
-    $(R.art).innerHTML = bmArt.map(b => pickBtn(b, on.has(b.id), 'data-rpick')).join('') || none;
-    $(R.art).querySelectorAll('[data-rpick]').forEach(x => x.onclick = () => pickRunArt(slot, x.dataset.rpick, x));
+  for (const [slot, R] of Object.entries(RUNS)) {          // the card shows only the chosen picture; Choose opens the picker
+    const a = shelf.find(x => slotArt(slot, x)), b = a && bmArt.find(x => x.id === a.bookmark);
+    $(R.art).innerHTML = a ? `<div class="chosen"><img data-pick-img="${esc(b ? b.id : '')}" alt="" src="${b ? bmThumb[b.id] || '' : ''}"><span>${esc(b ? (b.note || b.id).slice(0, 48) : a.title || a.id)}</span></div>`
+      : '<p class="hint" style="margin:0">None — the studio makes its own cover.</p>';
   }
   if (nArtId && !bmArt.some(b => b.id === nArtId)) nArtId = '';
   $('nArtPicks').innerHTML = bmArt.map(b => pickBtn(b, b.id === nArtId, 'data-npick')).join('') || none;
@@ -1594,7 +1643,7 @@ function applyShared() {
   $('shareCard').querySelectorAll('[data-share]').forEach(b => b.onclick = () => {
     const to = b.dataset.share; $('shareCard').classList.add('hide');
     if (to === 'bookmark') { showTab('saved'); $('bmUrl').value = u; validateBm(); $('bmNote').focus(); return }
-    showSub('add', to);
+    if (to === 'reference') showTab('learn'); else showSub('add', to);
     if (to === 'news') { $('aurl').value = u; validateNews() }
     else {
       const cur = $('links').value.trim();

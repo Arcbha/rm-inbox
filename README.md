@@ -2,8 +2,9 @@
 
 A static page that feeds the Rupee Mechanics studio. Five tabs in a bottom bar:
 
-- **Pre & Post** — Market now (Top 5 now); the pre-market (7:45 IST) and post-market (5:45 pm IST) posts, each with an on/off switch, a cover picked from Bookmarks and **Build now** (builds it on GitHub at once).
-- **Newsroom** — News (link and/or screenshots, Make a, note, cover art reference: upload or a bookmark, Send / Send & build now) · Schedule (+ the scheduled list) · Reference. Sharing a link from the phone asks: Bookmark, Teach the AI, or News story.
+- **Pre & Post** — Market now (Top 5 now, **Earlier briefs** expands the history); the pre-market (7:45 IST) and post-market (5:45 pm IST) posts, each with an on/off switch (instant, one save per tap), **Choose cover art** (a picker over your bookmarks; the card shows only the chosen one) and **Build now**.
+- **Newsroom** — News (link and/or screenshots, Make a, note, cover art reference: upload or a bookmark, Send / Send & build now) · Schedule (+ the scheduled list).
+- **References** — learning material for the agents (links, screenshots, videos, carousels); the hourly GitHub scheduler queues a study run when something new is waiting. Sharing a link from the phone asks: Bookmark, Teach the AI, or News story.
 - **Bookmarks** — the one place to save anything (a link and/or screenshots). Private, except a bookmark you pick as artwork: its first picture is copied for that post.
 - **Studio** — rendered carousels and reels, newest version of each post only; per carousel **Delete**, **Fix…** (a note → the studio applies it and re-renders), **Published / Not posted** (rating).
 - **Live bar** (under the header, on every tab) — what is building, the agent and stage, the account, paused/failed runs with **Retry**, and questions from the studio with an answer box. Reads the `live` branch + `studio/schedule/build/` + blocked `studio/jobs/`.
@@ -35,3 +36,5 @@ Finance_Repo's news Action files the queues (`engine/schedule.py ingest`) and th
 
 ## Requests (build-now)
 Every action that makes something commits `studio/schedule/build/build-<IST stamp>-<slug>.json` = `{slug, kind, note, added, status: "pending", by: "rm-inbox"}`; kinds carousel · poster · reel · premarket · postmarket · revise · rate · resume. Contract: Finance_Repo `studio/schedule/README.md` § Carousels end to end.
+
+Reads are never cached (`fetch(…, {cache: 'no-store'})`): GitHub answers with max-age=60, and a cached answer right after a save made switches and pickers flip back.
