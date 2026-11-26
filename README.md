@@ -5,7 +5,8 @@ A static page that feeds the Rupee Mechanics studio. Five tabs in a bottom bar:
 - **Pre & Post** — Market now (Top 5 now); the pre-market (7:45 IST) and post-market (5:45 pm IST) posts, each with an on/off switch, a cover picked from Bookmarks and **Build now** (builds it on GitHub at once).
 - **Newsroom** — News (link and/or screenshots, Make a, note, cover art reference: upload or a bookmark, Send / Send & build now) · Schedule (+ the scheduled list) · Reference. Sharing a link from the phone asks: Bookmark, Teach the AI, or News story.
 - **Bookmarks** — the one place to save anything (a link and/or screenshots). Private, except a bookmark you pick as artwork: its first picture is copied for that post.
-- **Studio** — rendered carousels and reels, newest version of each post only (the studio prunes older ones); **Delete** removes a post's preview.
+- **Studio** — rendered carousels and reels, newest version of each post only; per carousel **Delete**, **Fix…** (a note → the studio applies it and re-renders), **Published / Not posted** (rating).
+- **Live bar** (under the header, on every tab) — what is building, the agent and stage, the account, paused/failed runs with **Retry**, and questions from the studio with an answer box. Reads the `live` branch + `studio/schedule/build/` + blocked `studio/jobs/`.
 - **More** — the reference library, what you sent, studio status, Forget token.
 
 - No build step, no secrets. `index.html` + `app.js`.
@@ -31,3 +32,6 @@ Carousels rendered by `engine/carousel.py` appear above the reels: swipe the sli
 
 Finance_Repo's news Action files the queues (`engine/schedule.py ingest`) and the RM scheduler task runs them. News links alone are enough on the News tab (the studio reads the article).
 - **Market now → Top 5 now** — one tap (optional focus note): Finance_Repo's `market-now` Action runs Claude Code on the news and the 5 points for this moment appear here in about 3 minutes; *Make it a carousel* schedules a post from them. Needs the `CLAUDE_CODE_OAUTH_TOKEN` secret on Finance_Repo once (`claude setup-token`).
+
+## Requests (build-now)
+Every action that makes something commits `studio/schedule/build/build-<IST stamp>-<slug>.json` = `{slug, kind, note, added, status: "pending", by: "rm-inbox"}`; kinds carousel · poster · reel · premarket · postmarket · revise · rate · resume. Contract: Finance_Repo `studio/schedule/README.md` § Carousels end to end.
