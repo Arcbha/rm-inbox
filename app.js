@@ -83,6 +83,7 @@ async function commitFiles(files, message, onProgress, rebuild) {
   const entries = [];
   for (const f of files) {
     if (f.del) { entries.push({ path: f.path, mode: '100644', type: 'blob', sha: null }); continue }
+    if (f.sha) { entries.push({ path: f.path, mode: '100644', type: 'blob', sha: f.sha }); continue }
     const sha = await postBlob(f.b64, p => onProgress && onProgress(.9 * (done + p * f.b64.length) / total));
     done += f.b64.length;
     entries.push({ path: f.path, mode: '100644', type: 'blob', sha });
@@ -130,13 +131,11 @@ $('connect').onclick = async () => {
 $('forget').onclick = () => { if (armTap($('forget'), 'Tap again to forget')) { store.del(K.tok); boot() } };
 
 // ---------- tabs ----------
-// five tabs (2026-11-26 refresh): Today · Add · Saved · Studio · More; Add and More have sections (chips)
+// five tabs (editor 2026-11-26): Pre & Post · Newsroom · Saved Artwork · Studio · More (ids stay today/add/saved so saved tabs survive)
 let statusTimer = null;
-const TITLE = { today: 'Today', add: 'Add', saved: 'Saved', studio: 'Studio', more: 'More' };
+const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Saved Artwork', studio: 'Studio', more: 'More' };
 const OLDTAB = { refs: 'add', news: 'add', plan: 'today', library: 'more', status: 'more' };
-const SUBS = { add: ['news', 'reference', 'artwork', 'schedule'], more: ['library', 'mine', 'status'] };
-const SUBHINT = { bookmark: 'Just for you — a video or artwork you like. Never goes to the AI.', news: 'A story for a post: the article link, screenshots, or both.',
-  reference: 'Teach the AI: reels, carousels and posts the studio studies for style.', artwork: 'A picture for a later post — tomorrow’s cover, a WILD slide.', schedule: 'Have the studio build a post at a time you pick.' };
+const SUBS = { add: ['news', 'schedule', 'reference'], saved: ['artwork', 'bookmarks'], more: ['library', 'mine', 'status'] };
 const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes(v) ? v : SUBS[g][0] };
 function showTab(t) {
   t = OLDTAB[t] || t; if (!TITLE[t]) t = 'today';
@@ -146,7 +145,6 @@ function showTab(t) {
   $('pageTitle').textContent = TITLE[t]; $('pageTitle').classList.remove('hide');
   clearInterval(statusTimer);
   if (t === 'today') loadPlan();
-  if (t === 'saved') loadBookmarks();
   if (t === 'studio') loadReels();
   if (SUBS[t]) showSub(t, subOf(t));
 }
@@ -155,9 +153,9 @@ function showSub(g, s) {
   const pane = document.querySelector(`[data-pane="${g}"]`);
   pane.querySelectorAll('[data-sub]').forEach(d => d.classList.toggle('hide', d.dataset.sub !== s));
   pane.querySelectorAll(`[data-seg="${g}"] button`).forEach(b => b.classList.toggle('on', b.dataset.s === s));
-  if (g === 'add') $('addHint').textContent = SUBHINT[s] || '';
   clearInterval(statusTimer);
-  if (s === 'schedule') loadPlan();
+  if (['schedule', 'news', 'artwork'].includes(s)) loadPlan();
+  if (s === 'bookmarks') loadBookmarks();
   if (s === 'library') loadLibrary();
   if (s === 'mine') loadMyRefs();
   if (s === 'status') { loadStatus(); statusTimer = setInterval(loadStatus, 15000) }
@@ -421,17 +419,17 @@ document.addEventListener('paste', e => {
   const tab = store.get(K.tab), sub = subOf('add');
   const files = [...(e.clipboardData || {}).items || []].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
   if (!files.length) return;
-  if (tab === 'saved') { e.preventDefault(); return addBm(files) }
+  if (tab === 'saved' && subOf('saved') === 'bookmarks') { e.preventDefault(); return addBm(files) }
   if (tab !== 'add' || !['news', 'reference'].includes(sub)) return;
   e.preventDefault(); sub === 'news' ? addImages(files) : addUploads(files)
 });
 const blobB64 = b => readB64(b);
 // optional cover-art reference for this story → Finance_Repo studio/editor-assets/<slug>/cover-inspiration.<ext>
-let nArt = null;
+let nArt = null, nArtId = '';                          // cover art reference: an upload, or a Saved Artwork id
 function setNArt(f) {
   if (!f || !f.type.startsWith('image/')) return;
   if (nArt) URL.revokeObjectURL(nArt.url);
-  nArt = { file: f, url: URL.createObjectURL(f) };
+  nArt = { file: f, url: URL.createObjectURL(f) }; nArtId = ''; drawPicks();
   $('nArtPrev').classList.remove('hide');
   $('nArtPrev').innerHTML = `<img src="${nArt.url}" alt=""><button class="btn ghost small danger" id="nArtX" style="width:100%;border-radius:0">Remove</button>`;
   $('nArtX').onclick = () => { URL.revokeObjectURL(nArt.url); nArt = null; $('nArtPrev').classList.add('hide'); $('nArtPrev').innerHTML = '' };
@@ -462,20 +460,27 @@ async function sendStory(build) {
       files.push({ path: meta.cover_ref, b64: await readB64(nArt.file) });
       files.push({ path: `studio/editor-assets/${slug}/note.md`, b64: b64utf8(`# Editor art for ${slug}\n\n- \`cover-inspiration.${ext}\` — sent from RM Inbox with the story: the cover's visual language (inspiration for the treatment, never the subject — COVER-PLAYBOOK §8).${note ? ` Editor's note: ${note}` : ''}\n`) });
     }
+    const sa = !nArt && nArtId && shelf.find(a => a.id === nArtId), saPath = sa && `studio/artwork/${sa.id}/${sa.file}`;
+    if (sa && planSha[saPath]) {                       // same contract as an upload; the shelf file's blob is reused, not re-uploaded
+      const ext = (sa.file.split('.').pop() || 'png').toLowerCase();
+      meta.cover_ref = `studio/editor-assets/${slug}/cover-inspiration.${ext}`; meta.cover_art = sa.id;
+      files.push({ path: meta.cover_ref, sha: planSha[saPath] });
+      files.push({ path: `studio/editor-assets/${slug}/note.md`, b64: b64utf8(`# Editor art for ${slug}\n\n- \`cover-inspiration.${ext}\` — Saved Artwork ${sa.id} (${sa.title || sa.file}), picked in RM Inbox with the story: the cover's visual language (inspiration for the treatment, never the subject — COVER-PLAYBOOK §8).${sa.note ? ` Artwork note: ${sa.note}` : ''}${note ? ` Editor's note: ${note}` : ''}\n`) });
+    }
     files.push({ path: `news/inbox/${slug}/meta.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') });
     if (build) {
       const ts = new Date(Date.now() + 5.5 * 3600e3).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
       files.push({ path: `studio/schedule/build/build-${ts}-${slug}.json`, b64: b64utf8(JSON.stringify({ slug, kind, note, added: new Date().toISOString(), status: 'pending', by: 'rm-inbox' }, null, 2) + '\n') });
     }
     const what = shots.length ? `${shots.length} screenshot${shots.length > 1 ? 's' : ''}` : 'link';
-    await commitFiles(files, `inbox: news ${slug} (${what}${meta.url && shots.length ? ' + link' : ''}${nArt ? ' + cover art' : ''})${build ? ' · build now' : ''}`, p => bar('newsBar', p));
+    await commitFiles(files, `inbox: news ${slug} (${what}${meta.url && shots.length ? ' + link' : ''}${meta.cover_ref ? ' + cover art' : ''})${build ? ' · build now' : ''}`, p => bar('newsBar', p));
     msg('newsMsg', 'ok', build
-      ? `Sent, and the ${esc(kind)} is building on GitHub now (about 30–60 minutes). Watch it in <b>Today → Coming up</b>; it lands in <b>Studio</b>.`
+      ? `Sent, and the ${esc(kind)} is building on GitHub now (about 30–60 minutes). Watch it in <b>Newsroom → Schedule</b>; it lands in <b>Studio</b>.`
       : `Saved to <code>news/inbox/${esc(slug)}/</code>.${meta.url ? ' The studio reads the article from the link within a minute.' : ''} Run <code>/${esc(kind || 'carousel')} ${esc(slug)}</code> in Claude, or tap Send &amp; build now next time.`);
     shots.forEach(s => URL.revokeObjectURL(s.url)); shots = []; drawThumbs();
     $('aurl').value = ''; $('nkind').value = ''; $('nNote').value = '';
     if (nArt) { URL.revokeObjectURL(nArt.url); nArt = null; $('nArtPrev').classList.add('hide'); $('nArtPrev').innerHTML = '' }
-    validateNews();
+    nArtId = ''; drawPicks(); validateNews();
   } catch (e) { msg('newsMsg', 'err', esc(e.message)); validateNews() }
   bar('newsBar', null);
 }
@@ -630,7 +635,8 @@ function drawReels() {
         <div class="tagrow" style="margin-top:2px"><span class="tag">${esc(THEME[r.theme] || r.theme)}</span><span class="tag">${r.captions === 'play' ? 'subtitle play' : 'captions'}</span>${r.section ? `<span class="tag" style="background:var(--blue);color:#fff;box-shadow:none">${esc(r.section)}</span>` : ''}${r.moves ? `<span class="tag">${r.moves} camera</span>` : ''}</div>
         ${r.angle ? `<div class="id" style="margin-top:8px;word-break:normal">${esc(r.angle)}</div>` : ''}
         <div class="meta"><span>${r.duration}s · audit ${st(r.audit)} · critic ${st(r.critic)}</span></div>
-        <div class="meta" style="margin-top:4px"><span>${ago(r.rendered)} · ${r.mb} MB</span><a href="#" data-dl="${esc(r.slug)}">Save ↓</a></div></div></div>`).join('') || '<div class="card empty">Nothing rendered yet.</div>';
+        <div class="meta" style="margin-top:4px"><span>${ago(r.rendered)} · ${r.mb} MB</span><a href="#" data-dl="${esc(r.slug)}">Save ↓</a></div>
+        <div class="acts" style="display:flex;margin-top:8px"><button class="btn ghost small danger" data-pdel="${esc(r.slug)}" style="flex:1">Delete</button></div></div></div>`).join('') || '<div class="card empty">Nothing rendered yet.</div>';
   reels.forEach(wirePic);
   $('reelGrid').querySelectorAll('[data-dl]').forEach(a => a.onclick = async ev => {
     ev.preventDefault(); const r = reels.find(x => x.slug === a.dataset.dl); a.textContent = '…';
@@ -695,6 +701,27 @@ async function playReel(el, r) {
   });
 }
 $('reelRefresh').onclick = loadReels;
+// Delete a post from Studio (editor 2026-11-26): its studio/previews/index.json entry + its preview files, in one commit.
+// The source reel / carousel / poster folder stays (re-running its preview brings it back). Older versions of a post are
+// pruned by the studio itself (engine/previews.py) after every render.
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-pdel]'); if (!btn) return;
+  if (!armTap(btn, 'Tap again to delete')) return;
+  const slug = btn.dataset.pdel; btn.disabled = true;
+  try {
+    const { repo, branch } = cfg();
+    const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+    const mine = p => p === `studio/previews/${slug}.mp4` || p === `studio/previews/${slug}.jpg` || p === `studio/previews/posters/${slug}.jpg` || p.startsWith(`studio/previews/carousels/${slug}/`);
+    const files = tree.tree.filter(t => t.type === 'blob' && mine(t.path)).map(t => ({ path: t.path, del: true }));
+    await commitFiles(files, `rm-inbox: delete ${slug} from Studio`, null, async head => {
+      const r = await api(`/repos/${repo}/contents/studio/previews/index.json?ref=${head}`), j = JSON.parse(utf8b64(r.content));
+      j.reels = (j.reels || []).filter(x => x.slug !== slug); j.carousels = (j.carousels || []).filter(x => x.slug !== slug);
+      return [{ path: 'studio/previews/index.json', b64: b64utf8(JSON.stringify(j, null, 1) + '\n') }];
+    });
+    reels = reels.filter(x => x.slug !== slug); cars = cars.filter(x => x.slug !== slug);
+    drawCarousels(); drawReels(); msg('reelMsg', 'ok', `Deleted ${esc(slug)}.`);
+  } catch (err) { msg('reelMsg', 'err', esc(err.message)); btn.disabled = false }
+});
 
 // ---------- carousels (studio/previews/index.json → carousels, written by engine/carousel.py) ----------
 let cars = [], carImgs = {};
@@ -716,7 +743,7 @@ function drawCarousels() {
       <div class="body"><div class="note" style="font-size:15px">${esc(c.title || c.slug)}</div>
         <div class="tagrow" style="margin-top:2px"><span class="tag">${c.slides.length} slides</span><span class="tag">${esc(c.theme || '')}</span></div>
         <div class="meta"><span>${esc(c.slug)} · audit ${st(c.audit)}</span></div>
-        <div class="acts"><button class="btn primary small" data-share="${ci}">${ready[cars[ci].slug + cars[ci].rendered] ? `Open share sheet · ${cars[ci].slides.length} ready` : 'Post to Instagram'}</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
+        <div class="acts"><button class="btn ghost small danger" data-pdel="${esc(c.slug)}" style="flex:none">Delete</button><button class="btn primary small" data-share="${ci}">${ready[cars[ci].slug + cars[ci].rendered] ? `Open share sheet · ${cars[ci].slides.length} ready` : 'Post to Instagram'}</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
         <div class="msg" id="carMsg${ci}"></div></div></div>`).join('');
   cars.forEach((c, ci) => c.slides.forEach((s, i) => {
     const key = c.slug + '/' + i, el = document.querySelector(`.sl[data-ci="${ci}"][data-si="${i}"]`);
@@ -877,28 +904,31 @@ const istDay = (plus = 0) => new Date(Date.now() + 5.5 * 3600e3 + plus * 864e5).
 const jsonAt = p => fileText(p).then(JSON.parse).catch(() => null);
 const fmtDate = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) } catch { return d } };
 const USE_AS = { cover: 'cover', wild: 'WILD slide', slide: 'a slide', any: 'Claude decides' };
-const KIND_NAME = { carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', custom: 'Custom' };
-const useLine = a => (a.use_on === 'next' ? `next ${a.slot === 'premarket' ? 'morning post' : 'post'}` : a.use_on ? `${fmtDate(a.use_on)} · ${a.slot === 'premarket' ? 'morning post' : 'any post'}` : 'on the shelf') + ` · ${USE_AS[a.for] || a.for || ''}`;
-let shelf = [], artPick = new Set(), artUp = null, artThumb = {}, planPaths = [], planLoading = false;
+const KIND_NAME = { carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', custom: 'Custom' };
+const SLOT_NAME = { premarket: 'pre-market post', postmarket: 'post-market post', any: 'any post' };
+const useLine = a => (a.use_on === 'next' ? `next ${SLOT_NAME[a.slot] || 'post'}` : a.use_on ? `${fmtDate(a.use_on)} · ${SLOT_NAME[a.slot] || 'any post'}` : 'on the shelf') + ` · ${USE_AS[a.for] || a.for || ''}`;
+let shelf = [], artPick = new Set(), artUp = null, artThumb = {}, planPaths = [], planSha = {}, planLoading = false;
+const RUNS = { premarket: { hint: 'pmHint', btn: 'pmToggle', msg: 'pmMsg', art: 'pmArt', name: 'Pre-market' }, postmarket: { hint: 'poHint', btn: 'poToggle', msg: 'poMsg', art: 'poArt', name: 'Post-market' } };
 
 async function loadPlan() {
   if (!cfg().tok || planLoading) return; planLoading = true;
   try {
     const { repo, branch } = cfg();
     const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
-    const paths = planPaths = tree.tree.filter(t => t.type === 'blob').map(t => t.path);
+    const blobs = tree.tree.filter(t => t.type === 'blob'), paths = planPaths = blobs.map(t => t.path);
+    planSha = Object.fromEntries(blobs.map(t => [t.path, t.sha]));
     loadNow(paths).catch(e => msg('nowMsg', 'err', esc(e.message)));
     const errOf = p => paths.includes(p.replace(/\.json$/, '.error.txt'));
-    // pre-market switch
+    // pre- and post-market switches (recurring.json)
     const rec = paths.includes('studio/schedule/recurring.json') ? await jsonAt('studio/schedule/recurring.json') : null;
-    const pm = rec && (rec.runs || []).find(r => r.id === 'premarket');
-    const lastRun = paths.filter(p => /^studio\/schedule\/runs\/[^/]+-premarket\.json$/.test(p)).sort().pop();
-    const lr = lastRun ? await jsonAt(lastRun) : null;
-    if (!pm) { $('pmHint').textContent = 'Not set up on this branch yet.'; $('pmToggle').disabled = true; $('pmToggle').textContent = '—' }
-    else {
-      const on = pm.enabled !== false;
-      $('pmHint').innerHTML = `<span class="pill ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span> Mon–Fri ${esc(pm.at)} IST on market days: ET, Mint and Google News → the 4–5 things that matter before 9:15 → a carousel in Studio by about 9:00.${lr ? ` Last run ${esc(fmtDate(lr.date))}: ${esc(lr.status)}.` : ''}`;
-      $('pmToggle').textContent = on ? 'Turn off' : 'Turn on'; $('pmToggle').dataset.on = on ? '1' : ''; $('pmToggle').disabled = false;
+    for (const [id, R] of Object.entries(RUNS)) {
+      const run = rec && (rec.runs || []).find(r => r.id === id);
+      const lastRun = paths.filter(p => new RegExp(`^studio/schedule/runs/[^/]+-${id}\\.json$`).test(p)).sort().pop();
+      const lr = lastRun ? await jsonAt(lastRun) : null;
+      if (!run) { $(R.hint).textContent = 'Not set up on this branch yet.'; $(R.btn).disabled = true; $(R.btn).textContent = '—'; continue }
+      const on = run.enabled !== false;
+      $(R.hint).innerHTML = `<span class="pill ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span> Mon–Fri ${esc(run.at)} IST${lr ? ` · last run ${esc(fmtDate(lr.date))}: ${esc(lr.status)}` : ''}`;
+      $(R.btn).textContent = on ? 'Turn off' : 'Turn on'; $(R.btn).dataset.on = on ? '1' : ''; $(R.btn).disabled = false;
     }
     // artwork: shelf (newest 40) + uploads the Action hasn't filed yet
     const artJson = paths.filter(p => /^studio\/artwork\/[^/]+\/art\.json$/.test(p) && !p.startsWith('studio/artwork/queue/')).sort().reverse().slice(0, 40);
@@ -917,19 +947,42 @@ async function loadPlan() {
   planLoading = false;
 }
 
-$('pmToggle').onclick = async () => {
-  const btn = $('pmToggle'), turnOn = !btn.dataset.on; btn.disabled = true;
+async function toggleRun(id) {
+  const R = RUNS[id], btn = $(R.btn), turnOn = !btn.dataset.on; btn.disabled = true;
   try {
     const { repo } = cfg();
-    await commitFiles([], `rm-inbox: pre-market post ${turnOn ? 'on' : 'off'}`, null, async head => {
+    await commitFiles([], `rm-inbox: ${id} post ${turnOn ? 'on' : 'off'}`, null, async head => {
       const r = await api(`/repos/${repo}/contents/studio/schedule/recurring.json?ref=${head}`);
-      const j = JSON.parse(utf8b64(r.content)); (j.runs || []).forEach(x => { if (x.id === 'premarket') x.enabled = turnOn });
+      const j = JSON.parse(utf8b64(r.content)); (j.runs || []).forEach(x => { if (x.id === id) x.enabled = turnOn });
       return [{ path: 'studio/schedule/recurring.json', b64: b64utf8(JSON.stringify(j, null, 2) + '\n') }];
     });
-    msg('pmMsg', 'ok', turnOn ? 'On — the next market morning at 7:45 IST builds it.' : 'Off — no pre-market post until you turn it on again.');
-  } catch (e) { msg('pmMsg', 'err', esc(e.message)) }
+    msg(R.msg, 'ok', turnOn ? `On — the next market day builds it at ${id === 'premarket' ? '7:45' : '5:45 pm'} IST.` : `Off — no ${R.name.toLowerCase()} post until you turn it on again.`);
+  } catch (e) { msg(R.msg, 'err', esc(e.message)) }
   await loadPlan();
-};
+}
+$('pmToggle').onclick = () => toggleRun('premarket');
+$('poToggle').onclick = () => toggleRun('postmarket');
+// the artwork a pre/post run will take: art.json use_on "next" + slot (or dated today) — one per post
+const slotArt = (slot, a) => a.status === 'saved' && a.slot === slot && (a.use_on === 'next' || a.use_on === istDay());
+async function pickRunArt(slot, id, btn) {
+  const R = RUNS[slot], cur = shelf.filter(a => slotArt(slot, a)).map(a => a.id), off = cur.includes(id);
+  btn.disabled = true;
+  try {
+    const { repo } = cfg();
+    await commitFiles([], `rm-inbox: ${off ? 'clear' : 'set'} ${slot} artwork ${id}`, null, async head => {
+      const out = [];
+      for (const aid of new Set([...cur, id])) {
+        const path = `studio/artwork/${aid}/art.json`, r = await api(`/repos/${repo}/contents/${path}?ref=${head}`), j = JSON.parse(utf8b64(r.content));
+        if (aid === id && !off) Object.assign(j, { use_on: 'next', slot, for: j.for && j.for !== 'any' ? j.for : 'cover' });
+        else Object.assign(j, { use_on: null, slot: 'any' });
+        out.push({ path, b64: b64utf8(JSON.stringify(j, null, 2) + '\n') });
+      }
+      return out;
+    });
+    msg(R.msg, 'ok', off ? 'Artwork cleared — the studio makes its own cover.' : `Set — the next ${R.name.toLowerCase()} post uses it.`);
+  } catch (e) { msg(R.msg, 'err', esc(e.message)) }
+  await loadPlan();
+}
 
 // "Top 5 now": a request file → Finance_Repo's market-now Action runs Claude Code → news/morning/<date>/brief-<HHMM>.json
 let nowTimer = null, nowBrief = null;
@@ -975,7 +1028,7 @@ async function briefToPost(btn) {
     await commitFiles([{ path: `studio/schedule/queue/sched-${Date.now()}.json`, b64: b64utf8(JSON.stringify({ kind: 'carousel', run_at: at, tz: 'Asia/Kolkata', links,
       brief: `Carousel from the Top 5 brief ${nowBrief.path}: the five points, one slide each, in that order.`, artwork: [], added: new Date().toISOString() }, null, 2) + '\n') }],
       'rm-inbox: carousel from the Top 5 brief');
-    msg('nowMsg', 'ok', 'Scheduled as a carousel — it starts at the studio’s next check (7:45, 12:45, 5:45 or 9:45 pm IST) and lands in Studio. See Coming up.');
+    msg('nowMsg', 'ok', 'Scheduled as a carousel — it starts at the studio’s next check (7:45, 12:45, 5:45 or 9:45 pm IST) and lands in Studio. See Newsroom → Schedule.');
     setTimeout(loadPlan, 2500);
   } catch (e) { msg('nowMsg', 'err', esc(e.message)); btn.disabled = false }
 }
@@ -1011,7 +1064,7 @@ $('artFile').onchange = () => { setArt($('artFile').files[0]); $('artFile').valu
 ['dragleave', 'drop'].forEach(ev => $('artDrop').addEventListener(ev, e => { e.preventDefault(); $('artDrop').classList.remove('over') }));
 $('artDrop').addEventListener('drop', e => setArt(e.dataTransfer.files[0]));
 document.addEventListener('paste', e => {
-  if (store.get(K.tab) !== 'add' || subOf('add') !== 'artwork') return;
+  if (store.get(K.tab) !== 'saved' || subOf('saved') !== 'artwork') return;
   const f = [...(e.clipboardData || {}).items || []].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean)[0];
   if (f) { e.preventDefault(); setArt(f) }
 });
@@ -1068,10 +1121,22 @@ async function removeFiles(btn, match, what, msgId) {
 }
 
 // schedule a post
+const pickBtn = (a, on, attr) => `<button type="button" class="tag${on ? ' on' : ''}" ${attr}="${esc(a.id)}"><img data-pick-img="${esc(a.id)}" alt="" src="${artThumb[a.id] || ''}">${esc((a.title || a.id).slice(0, 24))}</button>`;
 function drawPicks() {
-  const saved = shelf.filter(a => a.status === 'saved');
+  const saved = shelf.filter(a => a.status === 'saved'), none = '<div class="empty">Nothing in Saved Artwork yet.</div>';
+  for (const [slot, R] of Object.entries(RUNS)) {
+    $(R.art).innerHTML = saved.map(a => pickBtn(a, slotArt(slot, a), 'data-rpick')).join('') || none;
+    $(R.art).querySelectorAll('[data-rpick]').forEach(b => b.onclick = () => pickRunArt(slot, b.dataset.rpick, b));
+  }
+  if (nArtId && !saved.some(a => a.id === nArtId)) nArtId = '';
+  $('nArtPicks').innerHTML = saved.map(a => pickBtn(a, a.id === nArtId, 'data-npick')).join('') || none;
+  $('nArtPicks').querySelectorAll('[data-npick]').forEach(b => b.onclick = () => {
+    nArtId = nArtId === b.dataset.npick ? '' : b.dataset.npick;
+    if (nArtId && nArt) { URL.revokeObjectURL(nArt.url); nArt = null; $('nArtPrev').classList.add('hide'); $('nArtPrev').innerHTML = '' }
+    drawPicks();
+  });
   artPick = new Set([...artPick].filter(id => saved.some(a => a.id === id)));
-  $('schArt').innerHTML = saved.map(a => `<button type="button" class="tag${artPick.has(a.id) ? ' on' : ''}" data-pick="${esc(a.id)}"><img data-pick-img="${esc(a.id)}" alt="" src="${artThumb[a.id] || ''}">${esc((a.title || a.id).slice(0, 24))}</button>`).join('') || '<div class="empty">Nothing on the shelf yet.</div>';
+  $('schArt').innerHTML = saved.map(a => `<button type="button" class="tag${artPick.has(a.id) ? ' on' : ''}" data-pick="${esc(a.id)}"><img data-pick-img="${esc(a.id)}" alt="" src="${artThumb[a.id] || ''}">${esc((a.title || a.id).slice(0, 24))}</button>`).join('') || none;
   $('schArt').querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { const id = b.dataset.pick; artPick.has(id) ? artPick.delete(id) : artPick.add(id); drawPicks() });
 }
 const schLinks = () => [...new Set(($('schLinks').value.match(/https?:\/\/[^\s<>"']+/g) || []).map(u => u.replace(/[),.]+$/, '')))];
@@ -1100,7 +1165,7 @@ function drawUpcoming(items, queued, builds = []) {
   for (const x of builds) { const m = x.m;
     rows.push({ at: m.added, html: item(DOT[m.status] ?? 'wait', `Build now · ${esc(KIND_NAME[m.kind] || m.kind)} · ${esc(m.slug)}`,
       `${BW[m.status] || esc(m.status)}${m.verdict ? ' · ' + esc(m.verdict.slice(0, 60)) : ''}`, m.error ? `<div class="e">${esc(m.error)}</div>` : '') }) }
-  if (builds.some(x => ['pending', 'running'].includes(x.m.status)) && store.get(K.tab) === 'today') { clearTimeout(nowTimer); nowTimer = setTimeout(loadPlan, 30000) }
+  if (builds.some(x => ['pending', 'running'].includes(x.m.status)) && store.get(K.tab) === 'add') { clearTimeout(nowTimer); nowTimer = setTimeout(loadPlan, 30000) }
   for (const x of queued) rows.push({ at: x.m.run_at, html: item(x.err ? 'err' : 'wait', `${esc(KIND_NAME[x.m.kind] || x.m.kind)} · ${esc(x.m.run_at)} IST`,
       x.err ? 'Couldn’t schedule it — remove and try again (needs a date and time).' : 'Saved · the studio files it within a minute',
       `${x.m.brief ? `<div class="s">“${esc(x.m.brief.slice(0, 90))}”</div>` : ''}<div class="acts"><button class="btn ghost small danger" data-sq="${esc(x.p)}">Remove</button></div>`) });
@@ -1268,7 +1333,7 @@ function applyShared() {
   $('shareUrl').textContent = u; $('shareCard').classList.remove('hide');
   $('shareCard').querySelectorAll('[data-share]').forEach(b => b.onclick = () => {
     const to = b.dataset.share; $('shareCard').classList.add('hide');
-    if (to === 'bookmark') { showTab('saved'); $('bmUrl').value = u; validateBm(); $('bmNote').focus(); return }
+    if (to === 'bookmark') { showTab('saved'); showSub('saved', 'bookmarks'); $('bmUrl').value = u; validateBm(); $('bmNote').focus(); return }
     showSub('add', to);
     if (to === 'news') { $('aurl').value = u; validateNews() }
     else {

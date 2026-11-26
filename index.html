@@ -35,7 +35,7 @@ h1 .logo{width:34px;height:34px;flex:none;border-radius:10px;box-shadow:0 6px 16
   box-shadow:0 -1px 0 var(--line),0 -8px 24px rgba(13,18,34,.06)}
 .tabs button{border:0;background:none;font:inherit;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 4px;color:var(--sub);border-radius:12px}
 .tabs button svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.tabs button span{font-size:11px;font-weight:600;letter-spacing:.01em}
+.tabs button span{font-size:11px;font-weight:600;letter-spacing:.01em;white-space:nowrap}
 .tabs button[aria-selected=true]{color:var(--blue)}
 .tabs button[aria-selected=true] svg{stroke-width:2.3}
 .pagetitle{font-size:30px;font-weight:700;letter-spacing:-.03em;margin:2px 2px 14px}
@@ -221,7 +221,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
     <h1><svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f78ff"/><stop offset="1" stop-color="#0742b8"/></linearGradient></defs><rect width="100" height="100" rx="24" fill="url(#lg)"/><path transform="translate(50 50) scale(1.08) translate(-50 -52)" d="M33 29H67M33 41H67M46 29C64 29 64 53 46 53H35L63 75" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg><div>Rupee <span>Mechanics</span></div></h1>
     <div class="who" id="who"></div>
   </header>
-  <h2 class="pagetitle hide" id="pageTitle">Today</h2>
+  <h2 class="pagetitle hide" id="pageTitle">Pre &amp; Post Market</h2>
 
   <!-- setup: shown until a token is saved -->
   <section id="setup" class="card hide">
@@ -240,18 +240,17 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
 
   <div id="app" class="hide">
     <nav class="tabs" role="tablist" data-noswipe>
-      <button role="tab" data-tab="today" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z M4 9h16 M8 3v4 M16 3v4"/></svg><span>Today</span></button>
-      <button role="tab" data-tab="add" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14 M5 12h14"/></svg><span>Add</span></button>
-      <button role="tab" data-tab="saved" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-4-5 4z"/></svg><span>Saved</span></button>
+      <button role="tab" data-tab="today" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z M4 9h16 M8 3v4 M16 3v4"/></svg><span>Pre &amp; Post</span></button>
+      <button role="tab" data-tab="add" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z M8 9h8 M8 13h8 M8 17h5"/></svg><span>Newsroom</span></button>
+      <button role="tab" data-tab="saved" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-4-5 4z"/></svg><span>Saved Artwork</span></button>
       <button role="tab" data-tab="studio" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z M10 9l5 3-5 3z"/></svg><span>Studio</span></button>
       <button role="tab" data-tab="more" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01 M12 12h.01 M19 12h.01"/></svg><span>More</span></button>
     </nav>
 
-    <!-- Today: market now, the pre-market post, what is coming up, artwork saved for posts -->
+    <!-- Pre & Post Market: market now, the pre-market and post-market posts, each with its artwork from Saved Artwork -->
     <section data-pane="today">
       <div class="card">
         <h2>Market now</h2>
-        <p class="hint">One tap: Claude reads ET, Mint and Google News and gives you the 5 things that matter right now — before the open, during the session or after the close. About 3 minutes.</p>
         <input id="nowNote" placeholder="optional focus: banks, IT results, the rupee…">
         <div style="height:10px"></div>
         <button class="btn primary" id="nowGo">Top 5 now</button>
@@ -260,13 +259,21 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       </div>
       <div class="card">
         <div class="switch"><div><h2>Pre-market post</h2><p class="hint" id="pmHint" style="margin:0">—</p></div>
-          <button class="btn ghost small" id="pmToggle" disabled>…</button></div>
+          <button class="btn ghost small" id="pmToggle" data-run="premarket" disabled>…</button></div>
+        <label>Cover artwork <span style="text-transform:none;letter-spacing:0;font-weight:500">(from Saved Artwork)</span></label>
+        <div class="picks" id="pmArt"><div class="empty">Loading…</div></div>
         <div class="msg" id="pmMsg"></div>
       </div>
-      <div class="card sec"><h3><span>Coming up</span><span id="upCount"></span></h3><div class="msg" id="upMsg"></div><div id="upList"><div class="empty">Loading…</div></div></div>
-      <div class="card sec"><h3><span>Artwork shelf</span><span id="shelfCount"></span></h3><div class="msg" id="shelfMsg"></div><div class="shelf" id="shelf"></div></div>    </section>
+      <div class="card">
+        <div class="switch"><div><h2>Post-market post</h2><p class="hint" id="poHint" style="margin:0">—</p></div>
+          <button class="btn ghost small" id="poToggle" data-run="postmarket" disabled>…</button></div>
+        <label>Cover artwork <span style="text-transform:none;letter-spacing:0;font-weight:500">(from Saved Artwork)</span></label>
+        <div class="picks" id="poArt"><div class="empty">Loading…</div></div>
+        <div class="msg" id="poMsg"></div>
+      </div>
+    </section>
 
-    <!-- Add: one place to send anything -->
+    <!-- Newsroom (data-pane "add"): the detailed news form, scheduled posts, references -->
     <section data-pane="add" class="hide">
       <div class="card hide" id="shareCard">
         <h2>Shared link</h2>
@@ -277,12 +284,10 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
           <button class="btn ghost" data-share="news"><b>News story</b><span>make a post</span></button>
         </div>
       </div>
-      <div class="seg" data-seg="add" data-noswipe><button data-s="news">News</button><button data-s="reference">Reference</button><button data-s="artwork">Artwork</button><button data-s="schedule">Schedule</button></div>
-      <p class="hint seghint" id="addHint"></p>
+      <div class="seg" data-seg="add" data-noswipe><button data-s="news">News</button><button data-s="schedule">Schedule</button><button data-s="reference">Reference</button></div>
       <div data-sub="news" class="hide">
       <div class="card">
         <h2>News</h2>
-        <p class="hint">The article link, screenshots, or both — the folder is named for you. A link alone is enough: the studio reads the story from the page (Mint, ET and most news sites). Paywalled? Add screenshots too.</p>
         <div class="drop" id="drop">Paste, drop here, or <b>choose screenshots</b>
           <input id="imgs" type="file" accept="image/*" multiple class="hide"></div>
         <div class="thumbs" id="thumbs"></div>
@@ -293,14 +298,15 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <label for="nNote">Note <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></label>
         <textarea id="nNote" placeholder="what you want: angle, mood, &quot;same font as the last post&quot;…" style="min-height:72px"></textarea>
         <label>Cover art reference <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></label>
-        <div class="drop" id="nArtDrop" style="padding:16px 14px">Add a picture whose look the cover should learn from
+        <div class="drop" id="nArtDrop" style="padding:16px 14px">Upload a picture
           <input id="nArt" type="file" accept="image/*" class="hide"></div>
         <div class="prev hide" id="nArtPrev"></div>
+        <p class="hint" style="margin:10px 2px 6px">or pick one from Saved Artwork</p>
+        <div class="picks" id="nArtPicks"><div class="empty">Loading…</div></div>
         <div style="height:14px"></div>
         <button class="btn primary" id="sendNews" disabled>Send story</button>
         <div style="height:8px"></div>
         <button class="btn ghost" id="sendBuild" disabled style="width:100%">Send &amp; build now</button>
-        <p class="hint" style="margin:8px 2px 0">Build now makes the whole post on GitHub (about 30–60 minutes) and shows it in Studio. Without it, the story waits for you to start it.</p>
         <div class="bar" id="newsBar"><i></i></div>
         <div class="msg" id="newsMsg"></div>
       </div>
@@ -340,30 +346,6 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <div class="msg" id="vidMsg"></div>
       </div>
       </div>
-      <div data-sub="artwork" class="hide">
-      <div class="card">
-        <h2>Save artwork</h2>
-        <p class="hint">A picture (or short video, or PDF) for a later post — tomorrow's morning cover, a WILD slide, anything. The original file is kept as it is.</p>
-        <div class="drop" id="artDrop">Paste, drop here, or <b>choose a file</b>
-          <input id="artFile" type="file" accept="image/*,video/*,application/pdf" class="hide"></div>
-        <div class="prev hide" id="artPrev"></div>
-        <label for="artWhen">Use for</label>
-        <select id="artWhen" class="learn"><option value="next">The next morning post</option><option value="date">A post on a date</option><option value="keep">Just keep it on the shelf</option></select>
-        <div id="artDateWrap" class="hide"><label for="artDate">Date</label><input id="artDate" type="date"></div>
-        <div class="two">
-          <div><label for="artSlot">Post</label><select id="artSlot" class="learn"><option value="premarket">Pre-market post</option><option value="any">Any post</option></select></div>
-          <div><label for="artFor">Use as</label><select id="artFor" class="learn"><option value="cover">Cover</option><option value="wild">WILD slide</option><option value="slide">A slide</option><option value="any">Claude decides</option></select></div>
-        </div>
-        <label for="artTitle">Title</label>
-        <input id="artTitle" placeholder="bull vs bear poster">
-        <label for="artNote">Note</label>
-        <textarea id="artNote" placeholder="what to do with it: make it the cover, keep the red, crop to the face…" style="min-height:72px"></textarea>
-        <div style="height:14px"></div>
-        <button class="btn primary" id="artSend" disabled>Save artwork</button>
-        <div class="bar" id="artBar"><i></i></div>
-        <div class="msg" id="artMsg"></div>
-      </div>
-      </div>
       <div data-sub="schedule" class="hide">
       <div class="card">
         <h2>Schedule a post</h2>
@@ -384,11 +366,39 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <button class="btn primary" id="schSend" disabled>Schedule</button>
         <div class="msg" id="schMsg"></div>
       </div>
+      <div class="card sec"><h3><span>Scheduled</span><span id="upCount"></span></h3><div class="msg" id="upMsg"></div><div id="upList"><div class="empty">Loading…</div></div></div>
       </div>
     </section>
 
-    <!-- Saved: the editor's bookmarks (never read by the studio) -->
+    <!-- Saved Artwork: the artwork shelf for posts, and the editor's bookmarks (never read by the studio) -->
     <section data-pane="saved" class="hide">
+      <div class="seg" data-seg="saved" data-noswipe><button data-s="artwork">Artwork</button><button data-s="bookmarks">Bookmarks</button></div>
+      <div data-sub="artwork" class="hide">
+      <div class="card">
+        <h2>Save artwork</h2>
+        <p class="hint">A picture (or short video, or PDF) for a later post — tomorrow's morning cover, a WILD slide, anything. The original file is kept as it is.</p>
+        <div class="drop" id="artDrop">Paste, drop here, or <b>choose a file</b>
+          <input id="artFile" type="file" accept="image/*,video/*,application/pdf" class="hide"></div>
+        <div class="prev hide" id="artPrev"></div>
+        <label for="artWhen">Use for</label>
+        <select id="artWhen" class="learn"><option value="next">The next post (pre or post market)</option><option value="date">A post on a date</option><option value="keep">Just keep it on the shelf</option></select>
+        <div id="artDateWrap" class="hide"><label for="artDate">Date</label><input id="artDate" type="date"></div>
+        <div class="two">
+          <div><label for="artSlot">Post</label><select id="artSlot" class="learn"><option value="premarket">Pre-market post</option><option value="postmarket">Post-market post</option><option value="any">Any post</option></select></div>
+          <div><label for="artFor">Use as</label><select id="artFor" class="learn"><option value="cover">Cover</option><option value="wild">WILD slide</option><option value="slide">A slide</option><option value="any">Claude decides</option></select></div>
+        </div>
+        <label for="artTitle">Title</label>
+        <input id="artTitle" placeholder="bull vs bear poster">
+        <label for="artNote">Note</label>
+        <textarea id="artNote" placeholder="what to do with it: make it the cover, keep the red, crop to the face…" style="min-height:72px"></textarea>
+        <div style="height:14px"></div>
+        <button class="btn primary" id="artSend" disabled>Save artwork</button>
+        <div class="bar" id="artBar"><i></i></div>
+        <div class="msg" id="artMsg"></div>
+      </div>
+      <div class="card sec"><h3><span>Artwork shelf</span><span id="shelfCount"></span></h3><div class="msg" id="shelfMsg"></div><div class="shelf" id="shelf"></div></div>
+      </div>
+      <div data-sub="bookmarks" class="hide">
       <div class="card">
         <h2>Bookmark</h2>
         <p class="hint">Paste a link or add screenshots of a video or artwork you like. Just for you — bookmarks never go to the AI.</p>
@@ -409,6 +419,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="msg" id="bmListMsg"></div>
       <div class="bmgrid" id="bmGrid"><div class="empty">Loading…</div></div>
       <div style="height:12px"></div><button class="btn ghost hide" id="bmMore" style="width:100%">Show more</button>
+      </div>
     </section>
 
     <section data-pane="studio" class="hide">
