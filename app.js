@@ -3,7 +3,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const API = 'https://api.github.com';
-const APP_VERSION = '2026-11-27e';   // shown in More's footer: which build the phone is running
+const APP_VERSION = '2026-11-27f';   // shown in More's footer: which build the phone is running
 const K = { tok: 'rm.token', repo: 'rm.repo', branch: 'rm.branch', tab: 'rm.tab' };
 const MAX_VIDEO = 90 * 1024 * 1024, MAX_SIDE = 2000, JPEG_Q = 0.85;
 
@@ -441,7 +441,6 @@ function drawRules() {
   $('rulesStamp').textContent = m ? `From the repo · ${m[1].trim()}` : 'From the repo';
   $('rulesBody').innerHTML = mdRender(rulesMd.replace(/^# .*\n|^_Generated.*_\n/gm, ''), '') || '<div class="empty">Nothing matches.</div>';
 }
-$('rulesRefresh').onclick = () => loadRules(true);
 
 // ---------- setup ----------
 function boot() {
@@ -933,7 +932,6 @@ async function queueAct(btn, kind, stem, q, qMeta = {}) {
   holdStatus = 0; await loadStatus(true);               // a refresh clears the top message, so set it after
   msg('statusMsg', ...top); show('statusMsg');
 }
-$('refresh').onclick = () => loadStatus(true);
 
 // ---------- tab 4: studio reels (studio/previews/index.json, written by engine/preview.py after every render) ----------
 let reels = [], posters = {}, noPoster = {}, playing = {}, loadingReel = {};
@@ -1038,7 +1036,6 @@ async function playReel(el, r) {
     el.appendChild(b);
   });
 }
-$('reelRefresh').onclick = loadReels;
 // Fix / rate a carousel or poster from Studio (editor 2026-11-26): a build-now request of kind revise | rate
 document.addEventListener('click', async e => {
   const f = e.target.closest('[data-fix]'), fs = e.target.closest('[data-fixsend]'), rt = e.target.closest('[data-rate]');
