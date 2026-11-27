@@ -1136,9 +1136,21 @@ async function prepareCarousel(c, id) {
   for (let i = 0; i < c.slides.length; i++) {
     const s = c.slides[i], path = s.full || s.src, ext = path.split('.').pop(), type = ext === 'mp4' ? 'video/mp4' : ext === 'png' ? 'image/png' : 'image/jpeg';
     msg(id, 'info', `Getting slide ${i + 1} of ${c.slides.length}…`);
-    files.push(new File([await rawFile(path, type)], `${c.slug}-${String(i + 1).padStart(2, '0')}.${ext}`, { type }));
+    const blob = await rawFile(path, type), name = `${c.slug}-${String(i + 1).padStart(2, '0')}`;
+    if (type === 'video/mp4') { files.push(new File([blob], name + '.mp4', { type })); continue }
+    files.push(new File([await to45jpeg(blob)], name + '.jpg', { type: 'image/jpeg' }));
   }
   return files;
+}
+// Instagram's share flow can square-crop the later images of a carousel even with portrait chosen (editor 2026-11-27: "Instagram
+// is cutting the last slides to square"). Every still goes out identical: exactly 1080×1350 (4:5), a flat sRGB JPEG, ~0.3–0.5 MB.
+async function to45jpeg(blob) {
+  const bmp = await createImageBitmap(blob), W = 1080, H = 1350;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+  const k = Math.max(W / bmp.width, H / bmp.height), w = bmp.width * k, h = bmp.height * k;   // cover: a 4:5 slide maps 1:1
+  g.drawImage(bmp, (W - w) / 2, (H - h) / 2, w, h);
+  return await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.92));
 }
 function shareCarousel(ci, btn) {
   const c = cars[ci], id = 'carMsg' + ci, key = c.slug + c.rendered, files = ready[key];
@@ -1146,7 +1158,7 @@ function shareCarousel(ci, btn) {
     if (navigator.canShare && navigator.canShare({ files })) {
       const p = navigator.share({ files, title: c.title || c.slug });
       if (c.caption && navigator.clipboard) navigator.clipboard.writeText(c.caption).catch(() => {});
-      msg(id, 'info', c.caption ? 'Caption copied. Pick Instagram → Feed; the slides arrive in order (01 first). Paste the caption.' : 'Pick Instagram → Feed; the slides arrive in order (01 first).');
+      msg(id, 'info', (c.caption ? 'Caption copied. Pick Instagram → Feed; the slides arrive in order (01 first). Paste the caption.' : 'Pick Instagram → Feed; the slides arrive in order (01 first).') + ' All slides are 4:5 (1080×1350): if Instagram shows squares, tap the ⤢ crop button on slide 1 before Next — it sets portrait for every slide.');
       p.then(() => msg(id, 'ok', 'Shared. In Instagram: Next → paste the caption → Share.')).catch(e => { if (e && e.name === 'AbortError') clearMsg(id); else msg(id, 'err', esc(e.message || String(e))) });
     } else {
       (async () => { for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)) }
