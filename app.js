@@ -1359,6 +1359,7 @@ const KIND_NAME = { carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premar
 const SLOT_NAME = { premarket: 'pre-market post', postmarket: 'post-market post', any: 'any post' };
 const useLine = a => (a.use_on === 'next' ? `next ${SLOT_NAME[a.slot] || 'post'}` : a.use_on ? `${fmtDate(a.use_on)} · ${SLOT_NAME[a.slot] || 'any post'}` : 'on the shelf') + ` · ${USE_AS[a.for] || a.for || ''}`;
 let shelf = [], bmArt = [], artPick = new Set(), planPaths = [], planSha = {}, planLoading = false, planAgain = false, runBusy = {}, pickBusy = false;   // pickers list bookmarks with pictures (editor 2026-11-26)
+const ART_RUNS = () => ({ ...RUNS, midday: { msg: 'ddMidMsg', art: 'ddMidArt', name: 'Midday deep-dive' }, evening: { msg: 'ddEveMsg', art: 'ddEveArt', name: 'Evening deep-dive' } });
 const RUNS = { premarket: { hint: 'pmHint', btn: 'pmToggle', msg: 'pmMsg', art: 'pmArt', go: 'pmBuild', name: 'Pre-market' }, postmarket: { hint: 'poHint', btn: 'poToggle', msg: 'poMsg', art: 'poArt', go: 'poBuild', name: 'Post-market' } };
 
 async function loadPlan() {
@@ -1477,7 +1478,7 @@ function bmArtFiles(b, aid, extra) {                 // a bookmark as a shelf ar
 }
 async function pickRunArt(slot, bmid) {            // bmid '' = no cover art
   if (pickBusy) return;
-  const R = RUNS[slot], cur = shelf.filter(a => slotArt(slot, a)), b = bmArt.find(x => x.id === bmid);
+  const R = ART_RUNS()[slot], cur = shelf.filter(a => slotArt(slot, a)), b = bmArt.find(x => x.id === bmid);
   if (cur.length === (b ? 1 : 0) && (!b || cur[0].bookmark === bmid)) return closeArtSheet();      // no change
   pickBusy = true; tapAt.art = Date.now(); const before = shelf;
   const files = [];
@@ -1502,7 +1503,7 @@ let artSheetSlot = '';
 function openArtSheet(slot) {
   artSheetSlot = slot;
   const cur = new Set(shelf.filter(a => slotArt(slot, a)).map(a => a.bookmark));
-  $('artSheetTitle').textContent = `${RUNS[slot].name} cover art`;
+  $('artSheetTitle').textContent = `${ART_RUNS()[slot].name} cover art`;
   $('artGrid').innerHTML = `<button type="button" class="artpick none${cur.size ? '' : ' on'}" data-apick=""><span>No cover art<br><small>the studio makes its own</small></span></button>`
     + bmArt.map(b => `<button type="button" class="artpick${cur.has(b.id) ? ' on' : ''}" data-apick="${esc(b.id)}"><img data-pick-img="${esc(b.id)}" alt="" src="${bmThumb[b.id] || ''}"><span>${esc((b.note || b.id).slice(0, 40))}</span></button>`).join('')
     + (bmArt.length ? '' : '<p class="hint" style="grid-column:1/-1">No artwork with pictures yet — save one in Artwork.</p>');
@@ -1512,17 +1513,23 @@ function closeArtSheet() { $('artSheet').classList.add('hide'); document.body.st
 $('artGrid').addEventListener('click', e => { const x = e.target.closest('[data-apick]'); if (x && artSheetSlot) pickRunArt(artSheetSlot, x.dataset.apick) });
 $('artSheetClose').onclick = closeArtSheet;
 document.addEventListener('click', e => { const x = e.target.closest('[data-choose]'); if (x) openArtSheet(x.dataset.choose) });
-async function buildRun(slot) {
-  const R = RUNS[slot], btn = $(R.go); btn.disabled = true; btn.textContent = 'Sending…';
+async function buildRun(slot, btn) {       // editor 2026-11-27: build any of the four posts now, with an optional news link + note + cover art
+  const R = ART_RUNS()[slot], el = { premarket: 'pm', postmarket: 'po', midday: 'ddMid', evening: 'ddEve' }[slot];
+  const link = (($(el + 'Link') || {}).value || '').trim(), note = (($(el + 'BNote') || {}).value || '').trim();
+  if (link && !/^https?:\/\/\S+\.\S+/.test(link)) return msg(R.msg, 'err', 'That link doesn’t look like a web address.');
+  btn.disabled = true; const t0 = btn.textContent; btn.textContent = 'Sending…';
   try {
     const slug = `${slot}-${istDay()}`;
-    await commitFiles([buildFile(slug, slot)], `rm-inbox: build ${slug} now`);
+    const brief = [link && `Editor's story link: ${link}`, note].filter(Boolean).join('\n');
+    await commitFiles([buildFile(slug, slot, brief, link ? { link } : {})], `rm-inbox: build ${slug} now${link ? ' (with a link)' : ''}`);
     msg(R.msg, 'ok', 'Building on GitHub now (about 30–60 minutes) — follow it in the bar at the top; it lands in <b>Studio</b>.'); pollLive(2500);
+    if ($(el + 'Link')) $(el + 'Link').value = ''; if ($(el + 'BNote')) $(el + 'BNote').value = '';
   } catch (e) { msg(R.msg, 'err', esc(e.message)) }
-  btn.disabled = false; btn.textContent = 'Build now';
+  btn.disabled = false; btn.textContent = t0;
 }
-$('pmBuild').onclick = () => buildRun('premarket');
-$('poBuild').onclick = () => buildRun('postmarket');
+$('pmBuild').onclick = () => buildRun('premarket', $('pmBuild'));
+$('poBuild').onclick = () => buildRun('postmarket', $('poBuild'));
+document.addEventListener('click', e => { const b = e.target.closest('[data-runbuild]'); if (b) buildRun(b.dataset.runbuild, b) });
 
 // ---------- deep dives (editor 2026-11-27, Finance_Repo studio/schedule/DEEPDIVE.md) ----------
 // news/deepdive/<date>/<midday|evening>.json: 4–5 candidates (one stock/company, sector or macro theme each). Build this → chosen +
@@ -1700,7 +1707,7 @@ const pickBtn = (b, on, attr) => `<button type="button" class="tag${on ? ' on' :
 function drawPicks() {
   const none = '<div class="empty">No artwork with pictures yet — save one in Artwork.</div>';
   bmArt.forEach(bmThumbFor);
-  for (const [slot, R] of Object.entries(RUNS)) {          // the card shows only the chosen picture; Choose opens the picker
+  for (const [slot, R] of Object.entries(ART_RUNS())) {          // the card shows only the chosen picture; Choose opens the picker
     const a = shelf.find(x => slotArt(slot, x)), b = a && bmArt.find(x => x.id === a.bookmark);
     $(R.art).innerHTML = '';
     const cb = document.querySelector(`[data-choose="${slot}"]`); if (cb) cb.textContent = a ? 'Choose cover art · 1 set' : 'Choose cover art';
@@ -1775,9 +1782,9 @@ function drawUpcoming(items, queued, builds = []) {
 // ---------- bookmarks: the one place to save (editor 2026-11-26). The studio never reads them, except a bookmark the editor picks as artwork ----------
 // Finance_Repo bookmarks/<id>/bookmark.json {id, url, note, source, images, added} + bookmarks/<id>/01.jpg …
 // No Action processes them and no agent reads them (Finance_Repo bookmarks/README.md).
-let bmShots = [], bms = [], bmPaths = [], bmShown = 60, bmSrc = '', bmThumb = {}, bmLoading = false;
-const BM_SRC = [['', 'All'], ['unused', 'Not used yet'], ['used', 'Used in a post'], ['ig', 'Instagram'], ['yt', 'YouTube'], ['x', 'X'], ['web', 'Web'], ['shot', 'Screenshots']];
-let bmUsed = {};   // bookmark id → the post that used it (studio/artwork/bm-*/art.json status used — editor 2026-11-27)
+let bmShots = [], bms = [], bmPaths = [], bmShown = 60, bmSrc = 'unused', bmThumb = {}, bmLoading = false;
+const BM_SRC = [['unused', 'Not used'], ['used', 'Used']];      // editor 2026-11-27: only two sections; screenshots and uploads are the same thing
+let bmUsed = {}, bmArts = {};   // bookmark id → the post that used it · bookmark id → its studio/artwork art.json files (to mark it not used again)
 const bmSource = u => u ? srcOf(u) || 'web' : 'shot';
 const ytId = u => { const m = (u || '').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/); return m ? m[1] : '' };
 const validateBm = () => { $('bmSave').disabled = !bmShots.length && !/^https?:\/\/\S+\.\S+/.test($('bmUrl').value.trim()) };
@@ -1824,8 +1831,9 @@ async function loadBookmarks(more) {
       const { repo, branch } = cfg();
       const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
       bmPaths = tree.tree.filter(t => t.type === 'blob' && /^bookmarks\/[^/]+\/bookmark\.json$/.test(t.path)).map(t => t.path).sort().reverse();
-      const artP = tree.tree.filter(t => t.type === 'blob' && /^studio\/artwork\/bm-[^/]+\/art\.json$/.test(t.path)).map(t => t.path);
-      const arts = (await Promise.all(artP.map(jsonAt))).filter(Boolean);
+      const artP = tree.tree.filter(t => t.type === 'blob' && /^studio\/artwork\/[^/]+\/art\.json$/.test(t.path) && !t.path.startsWith('studio/artwork/queue/')).map(t => t.path);
+      const arts = (await Promise.all(artP.map(async p => { const j = await jsonAt(p); return j && { ...j, _p: p } }))).filter(Boolean);
+      bmArts = {}; arts.forEach(a => { if (a.bookmark) (bmArts[a.bookmark] = bmArts[a.bookmark] || []).push(a) });
       bmUsed = {}; arts.forEach(a => { if (a.bookmark && (a.status === 'used' || a.status === 'picked')) bmUsed[a.bookmark] = (a.status === 'picked' ? 'in progress · ' : '') + (a.used_by || 'a post') });   // picked = a run is building with it; released = unused again
     }
     const have = new Set(bms.map(b => b.id));
@@ -1839,18 +1847,18 @@ async function loadBookmarks(more) {
 }
 function drawBookmarks() {
   const isPic = b => (b.images || []).length > 0, isUsed = b => !!bmUsed[b.id];
-  const FILT = { unused: b => isPic(b) && !isUsed(b), used: isUsed };
-  $('bmFilter').innerHTML = BM_SRC.filter(([k]) => !k || (FILT[k] ? bms.some(FILT[k]) : bms.some(b => b.source === k))).map(([k, n]) => `<button class="${bmSrc === k ? 'on' : ''}" data-f="${k}">${n}</button>`).join('');
+  const FILT = { unused: b => !isUsed(b), used: isUsed };
+  $('bmFilter').innerHTML = BM_SRC.map(([k, n]) => `<button class="${bmSrc === k ? 'on' : ''}" data-f="${k}">${n} · ${bms.filter(FILT[k]).length}</button>`).join('');
   $('bmFilter').querySelectorAll('button').forEach(b => b.onclick = () => { bmSrc = b.dataset.f; drawBookmarks() });
   const q = $('bmQ').value.trim().toLowerCase();
-  const shown = bms.filter(b => (!bmSrc || (FILT[bmSrc] ? FILT[bmSrc](b) : b.source === bmSrc)) && (!q || `${b.note} ${b.url}`.toLowerCase().includes(q)));
-  const NAME = { ig: 'Instagram', yt: 'YouTube', x: 'X', web: 'Web', shot: 'Screenshot' };
+  const shown = bms.filter(b => (FILT[bmSrc] || FILT.unused)(b) && (!q || `${b.note} ${b.url}`.toLowerCase().includes(q)));
+  const NAME = { ig: 'Instagram', yt: 'YouTube', x: 'X', web: 'Link', shot: 'Picture' };
   $('bmGrid').innerHTML = shown.map(b => {
     const host = (() => { try { return new URL(b.url).hostname.replace(/^www\./, '') } catch { return '' } })();
     const day = new Date(b.added).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-    return `<div class="bm"><div class="bp" data-open="${esc(b.id)}"><span class="big">${esc(NAME[b.source] || 'Link')}</span><span class="src">${esc((b.source || '').toUpperCase())}</span>${isUsed(b) ? `<span class="used">USED · ${esc(String(bmUsed[b.id]).slice(0, 22))}</span>` : ''}${(b.images || []).length > 1 ? `<span class="cnt">${b.images.length}</span>` : ''}</div>
+    return `<div class="bm"><div class="bp" data-open="${esc(b.id)}"><span class="big">${esc(NAME[b.source] || 'Link')}</span>${isUsed(b) ? `<span class="used">USED · ${esc(String(bmUsed[b.id]).slice(0, 22))}</span>` : ''}${(b.images || []).length > 1 ? `<span class="cnt">${b.images.length}</span>` : ''}</div>
       <div class="bb">${b.note ? `<div class="nt">${esc(b.note)}</div>` : ''}<div class="dt">${esc(day)}${host ? ' · ' + esc(host) : ''}</div>
-      <div class="ba">${b.url ? `<a href="${esc(b.url)}" target="_blank" rel="noopener">Open ↗</a>` : '<span></span>'}<button data-del="${esc(b.id)}">Delete</button></div></div></div>`;
+      <div class="ba">${isUsed(b) && !String(bmUsed[b.id]).startsWith('in progress') ? `<button class="again" data-again="${esc(b.id)}">Use again</button>` : b.url ? `<a href="${esc(b.url)}" target="_blank" rel="noopener">Open ↗</a>` : '<span></span>'}<button data-del="${esc(b.id)}">Delete</button></div></div></div>`;
   }).join('') || `<div class="empty" style="grid-column:1/-1">${bms.length ? 'Nothing matches.' : 'Nothing saved yet — save one above.'}</div>`;
   for (const b of shown) {
     const el = $('bmGrid').querySelector(`[data-open="${CSS.escape(b.id)}"]`); if (!el) continue;
@@ -1861,6 +1869,7 @@ function drawBookmarks() {
     el.onclick = () => (b.images || []).length ? openLightbox(b) : b.url && window.open(b.url, '_blank', 'noopener');
   }
   $('bmGrid').querySelectorAll('[data-del]').forEach(btn => btn.onclick = () => deleteBm(btn, btn.dataset.del));
+  $('bmGrid').querySelectorAll('[data-again]').forEach(btn => btn.onclick = () => useAgain(btn, btn.dataset.again));
   $('bmMore').classList.toggle('hide', bmPaths.length <= bmShown);
 }
 async function openLightbox(b) {
@@ -1868,6 +1877,27 @@ async function openLightbox(b) {
   b.images.forEach(async (n, i) => { const u = i === 0 && bmThumb[b.id] ? bmThumb[b.id] : await rawBlobUrl(`bookmarks/${b.id}/${n}`); const im = $('lbStrip').querySelector(`[data-i="${i}"]`); if (u && im) im.src = u });
 }
 $('lbClose').onclick = () => $('lightbox').classList.add('hide');
+// Use again (editor 2026-11-27: "an easy option to shift an image from used to not used, I want to repeat the design"):
+// every art.json of this bookmark that is `used` → `released` + released_by "editor"; the picker offers it again and
+// Finance_Repo's `art settle` never flips an editor release back.
+async function useAgain(btn, id) {
+  btn.disabled = true; btn.textContent = 'Moving…';
+  try {
+    const { repo } = cfg();
+    await commitFiles([], `rm-inbox: bookmark ${id} → not used (use again)`, null, async head => {
+      const out = [];
+      for (const a of bmArts[id] || []) {
+        if (a.status !== 'used') continue;
+        const j = JSON.parse(utf8b64((await api(`/repos/${repo}/contents/${a._p}?ref=${head}`)).content));
+        j.status = 'released'; j.released_by = 'editor'; j.released_at = new Date().toISOString();
+        out.push({ path: a._p, b64: b64utf8(JSON.stringify(j, null, 2) + '\n') });
+      }
+      return out;
+    });
+    delete bmUsed[id]; (bmArts[id] || []).forEach(a => { if (a.status === 'used') a.status = 'released' }); drawBookmarks();
+    msg('bmListMsg', 'ok', 'Moved to Not used — the next posts can pick it again.');
+  } catch (e) { btn.disabled = false; btn.textContent = 'Use again'; msg('bmListMsg', 'err', esc(e.message)) }
+}
 async function deleteBm(btn, id) {
   if (!armTap(btn, 'Sure?')) return;
   btn.disabled = true;
@@ -1933,3 +1963,24 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 takeShared();
 boot();
 applyShared();
+
+// Back closes the open picture / sheet instead of the app (editor 2026-11-27: "back button closes the app"):
+// opening an overlay pushes a history entry; Back pops it and closes the overlay; closing with × drops the entry.
+(() => {
+  const ids = ['lightbox', 'artSheet', 'edSheet'];
+  let popping = false;
+  const open = () => ids.some(id => $(id) && !$(id).classList.contains('hide'));
+  const mo = new MutationObserver(recs => recs.forEach(r => {
+    const el = r.target, shown = !el.classList.contains('hide'), was = !(r.oldValue || '').split(/\s+/).includes('hide');
+    if (shown && !was) { try { history.pushState({ rmOverlay: el.id }, '') } catch {} }
+    else if (!shown && was && !popping && history.state && history.state.rmOverlay === el.id) { try { history.back() } catch {} }
+  }));
+  ids.forEach(id => $(id) && mo.observe($(id), { attributes: true, attributeFilter: ['class'], attributeOldValue: true }));
+  window.addEventListener('popstate', () => {
+    if (!open()) return;
+    popping = true;
+    ids.forEach(id => { const el = $(id); if (el && !el.classList.contains('hide')) { el.classList.add('hide') } });
+    document.body.style.overflow = '';
+    setTimeout(() => { popping = false }, 0);
+  });
+})();
