@@ -1503,7 +1503,7 @@ let artSheetSlot = '';
 function openArtSheet(slot) {
   artSheetSlot = slot;
   const cur = new Set(shelf.filter(a => slotArt(slot, a)).map(a => a.bookmark));
-  $('artSheetTitle').textContent = `${ART_RUNS()[slot].name} cover art`;
+  $('artSheetTitle').textContent = `${(ART_RUNS()[slot] || { name: 'Post' }).name} cover art`;
   $('artGrid').innerHTML = `<button type="button" class="artpick none${cur.size ? '' : ' on'}" data-apick=""><span>No cover art<br><small>the studio makes its own</small></span></button>`
     + bmArt.map(b => `<button type="button" class="artpick${cur.has(b.id) ? ' on' : ''}" data-apick="${esc(b.id)}"><img data-pick-img="${esc(b.id)}" alt="" src="${bmThumb[b.id] || ''}"><span>${esc((b.note || b.id).slice(0, 40))}</span></button>`).join('')
     + (bmArt.length ? '' : '<p class="hint" style="grid-column:1/-1">No artwork with pictures yet — save one in Artwork.</p>');
