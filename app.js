@@ -1826,7 +1826,7 @@ async function loadBookmarks(more) {
       bmPaths = tree.tree.filter(t => t.type === 'blob' && /^bookmarks\/[^/]+\/bookmark\.json$/.test(t.path)).map(t => t.path).sort().reverse();
       const artP = tree.tree.filter(t => t.type === 'blob' && /^studio\/artwork\/bm-[^/]+\/art\.json$/.test(t.path)).map(t => t.path);
       const arts = (await Promise.all(artP.map(jsonAt))).filter(Boolean);
-      bmUsed = {}; arts.forEach(a => { if (a.bookmark && a.status === 'used') bmUsed[a.bookmark] = a.used_by || 'a post' });
+      bmUsed = {}; arts.forEach(a => { if (a.bookmark && (a.status === 'used' || a.status === 'picked')) bmUsed[a.bookmark] = (a.status === 'picked' ? 'in progress · ' : '') + (a.used_by || 'a post') });   // picked = a run is building with it; released = unused again
     }
     const have = new Set(bms.map(b => b.id));
     const want = bmPaths.slice(0, bmShown).filter(p => !have.has(p.split('/')[1]));
