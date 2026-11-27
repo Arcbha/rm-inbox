@@ -355,6 +355,13 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <div id="usageList"><div class="empty">Loading…</div></div>
         <div class="msg" id="usageMsg"></div>
       </div>
+      <div class="card" id="skipCard">
+        <div class="switch"><div><h2>Skip a day</h2><p class="hint" id="skipHint" style="margin:0">No automatic posts that day — pre-market, both deep dives, post-market.</p></div></div>
+        <div id="skipList" style="margin:8px 0"></div>
+        <button class="btn ghost" id="skipNext" type="button" disabled>Skip next market day</button>
+        <div style="display:flex;gap:8px;margin-top:8px"><input type="date" id="skipDate" style="flex:1"><button class="btn ghost small" id="skipGo" type="button">Skip this date</button></div>
+        <div class="msg" id="skipMsg"></div>
+      </div>
       <div class="card">
         <h2>Market now</h2>
         <input id="nowNote" placeholder="optional focus: banks, IT results, the rupee…">
