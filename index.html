@@ -249,6 +249,20 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;min-he
 .hist .more{display:block;font-size:13px;font-weight:600;color:var(--blue);margin-top:8px}
 .hist[open] .more{display:none}
 .hist ol{margin-top:8px}
+/* artwork: used marks + the "save more" prompt */
+.bm .bp .used{position:absolute;left:8px;bottom:8px;font-size:10px;font-weight:800;letter-spacing:.04em;background:rgba(13,18,34,.78);color:#fff;border-radius:6px;padding:3px 6px;max-width:calc(100% - 16px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.artprompt{display:flex;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:10px 12px 10px 14px;margin:-4px 0 10px;font-size:13px;box-shadow:0 0 0 1px var(--line);cursor:pointer}
+.artprompt span{flex:1}
+.artprompt b{color:var(--blue)}
+.artprompt button{border:0;background:none;font-size:20px;color:var(--sub);padding:0 4px}
+/* Rulebook (More): studio/WHITEPAPER.md rendered */
+.rules h1{font-size:20px;margin:0 0 6px}.rules h2{font-size:17px;margin:20px 0 8px}.rules h3{font-size:15px;margin:16px 0 6px;color:var(--sub)}
+.rules p,.rules li{font-size:14px;line-height:1.45}.rules ul{padding-left:18px;margin:6px 0}.rules li{margin:0 0 6px}
+.rules .tw{overflow-x:auto;margin:6px -4px}.rules table{border-collapse:collapse;font-size:12.5px;width:100%}
+.rules td,.rules th{border-top:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top}.rules th{color:var(--sub);font-weight:600}
+.rules details{border-top:1px solid var(--line);padding:8px 0}.rules details>summary{font-weight:700;font-size:16px;cursor:pointer;list-style:none}
+.rules details>summary::-webkit-details-marker{display:none}.rules details>summary::after{content:' ▾';color:var(--sub);font-weight:500}
+.rules mark{background:rgba(10,92,255,.15);color:inherit;border-radius:3px}
 /* cover-art picker */
 .chosen{display:flex;align-items:center;gap:10px}
 .chosen img{width:56px;height:70px;object-fit:cover;border-radius:8px;background:#dfe3ec;box-shadow:0 0 0 1px var(--line)}
@@ -291,6 +305,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
     <h1><svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f78ff"/><stop offset="1" stop-color="#0742b8"/></linearGradient></defs><rect width="100" height="100" rx="24" fill="url(#lg)"/><path transform="translate(50 50) scale(1.08) translate(-50 -52)" d="M33 29H67M33 41H67M46 29C64 29 64 53 46 53H35L63 75" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg><div>Rupee <span>Mechanics</span></div></h1>
     <div class="who" id="who"></div>
   </header>
+  <div class="artprompt hide" id="artPrompt"></div>
   <div class="live hide" id="live"><button class="livesum" id="liveSum" type="button"></button><div class="livelist hide" id="liveList"></div></div>
   <h2 class="pagetitle hide" id="pageTitle">Pre &amp; Post Market</h2>
 
@@ -482,7 +497,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
 
     <!-- More: the reference library, what you sent, studio status -->
     <section data-pane="more" class="hide">
-      <div class="seg" data-seg="more" data-noswipe><button data-s="library">Library</button><button data-s="mine">My references</button><button data-s="status">Status</button></div>
+      <div class="seg" data-seg="more" data-noswipe><button data-s="library">Library</button><button data-s="mine">My references</button><button data-s="status">Status</button><button data-s="rules">Rulebook</button></div>
       <div data-sub="library" class="hide">
       <div class="card">
         <div class="row" style="justify-content:space-between"><div><h2>Reference library</h2><p class="hint" id="libCount" style="margin:0">—</p></div>
@@ -507,6 +522,13 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <div class="msg" id="statusMsg"></div>
       </div>
       <div id="statusBody"></div>
+      </div>
+      <div data-sub="rules" class="hide">
+      <div class="card"><div class="row" style="justify-content:space-between"><div><h2>Rulebook</h2><p class="hint" id="rulesStamp" style="margin:0">—</p></div>
+        <button class="btn ghost small" id="rulesRefresh">Refresh</button></div>
+        <div class="libbar" style="margin-top:12px"><input id="rulesQ" placeholder="Search the rules" autocapitalize="off"></div>
+        <div class="msg" id="rulesMsg"></div></div>
+      <div class="card rules" id="rulesBody"><div class="empty">Loading…</div></div>
       </div>
       <div class="foot"><span id="repoLbl"></span><button id="forget">Forget token</button></div>
     </section>
