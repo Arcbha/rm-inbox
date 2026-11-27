@@ -1552,14 +1552,14 @@ async function loadDeepDives(paths, rec) {
 }
 function drawDeepDive(ed) {
   const D = DD[ed], m = ddMenu[ed], box = $(D.el + 'Menu');
-  if (!m || !(m.candidates || []).length) { box.innerHTML = `<div class="empty">Today's menu arrives at ${D.menu} IST — 4–5 subjects to choose from.</div>`; return }
+  if (!m || !(m.candidates || []).length) { box.innerHTML = `<div class="empty">Today's menu arrives at ${D.menu} IST — 4–5 subjects to choose from. Or tap <b>Suggest subjects</b> for a fresh menu now.</div>`; return }
   const pick = (m.candidates || []).find(c => c.id === (m.chosen || '')), top = m.top || m.candidates[0].id;
   if (m.status === 'skipped') { box.innerHTML = `<div class="ddstate">Skipped today${m.skipped_why ? ` — ${esc(m.skipped_why)}` : ''}.</div>`; return }
   if (['chosen', 'auto', 'building', 'built'].includes(m.status) && pick) {
     const w = { chosen: 'You chose', auto: 'Top pick (no choice in time)', building: 'Building', built: 'Built — in Studio' }[m.status];
     box.innerHTML = `<div class="ddstate"><b>${w}:</b> ${esc(pick.title || pick.subject)}${m.note ? `<br><span class="hint">Note: ${esc(m.note)}</span>` : ''}</div>`; return }
-  const late = Date.now() > Date.parse(m.decide_by || 0);
-  box.innerHTML = `<p class="hint" style="margin:8px 0 4px">${late ? 'Building the top pick now…' : `Choose one — if you don't, the top pick builds itself at ${D.build} (${inT(m.decide_by)}).`}</p>`
+  const late = m.decide_by && Date.now() > Date.parse(m.decide_by);
+  box.innerHTML = `<p class="hint" style="margin:8px 0 4px">${!m.decide_by ? 'Your requested menu — choose one to build.' : late ? 'Building the top pick now…' : `Choose one — if you don't, the top pick builds itself at ${D.build} (${inT(m.decide_by)}).`}</p>`
     + `<input class="ddnote" id="${D.el}Note" placeholder="optional note for the build">`
     + m.candidates.map(c => `<div class="dd"><div class="k"><span class="pill">${esc(LENS[c.lens] || c.lens || '')}</span>${c.id === top ? '<span class="pill top">Top pick</span>' : ''}<span class="hint" style="margin:0">${esc(c.subject || '')}</span></div>
       <h3>${esc(c.title || c.subject)}</h3>${c.why_today ? `<p><b>Why today:</b> ${esc(c.why_today)}</p>` : ''}${c.angle ? `<p><b>The angle:</b> ${esc(c.angle)}</p>` : ''}${c.not_a_repeat ? `<p>${esc(c.not_a_repeat)}</p>` : ''}
@@ -1573,7 +1573,9 @@ async function ddChoose(ed, cid) {                   // cid '' = skip today
   ddBusy[ed] = true; msg(D.el + 'Msg', 'info', 'Saving…');
   try {
     const { repo } = cfg(); let gone = false;
-    await commitFiles(cid ? [buildFile(`${ed}-${istDay()}`, ed, note, { prefer: '' })] : [], `rm-inbox: ${ed} deep dive — ${cid ? 'build ' + (c.subject || cid) : 'skip today'}`, null, async head => {
+    let slug = `${ed}-${istDay()}`;                       // a second deep dive that day gets -2, -3 … and never replaces the first
+    for (let k = 2; (planPaths || []).includes(`studio/carousels/${slug}/carousel.json`); k++) slug = `${ed}-${istDay()}-${k}`;
+    await commitFiles(cid ? [buildFile(slug, ed, note, { prefer: '' })] : [], `rm-inbox: ${ed} deep dive — ${cid ? 'build ' + (c.subject || cid) : 'skip today'}`, null, async head => {
       const r = await api(`/repos/${repo}/contents/${path}?ref=${head}`);
       const j = JSON.parse(utf8b64(r.content));
       if (['chosen', 'auto', 'building', 'built', 'skipped'].includes(j.status)) { gone = true; throw new Error(`Already ${j.status} — refresh to see it.`) }
@@ -1587,6 +1589,21 @@ async function ddChoose(ed, cid) {                   // cid '' = skip today
   } catch (e) { msg(D.el + 'Msg', 'err', esc(e.message)) }
   ddBusy[ed] = false;
 }
+// Suggest subjects (editor 2026-11-28: "an option to ask it to suggest me from its search from our sources"): runs the
+// deep-dive menu now (build-now kind menu → /deepdive-menu over ET, Mint, Google News) with an optional focus; the
+// menu then shows in the card to choose from, and nothing builds by itself.
+async function ddSuggest(ed, btn) {
+  const D = DD[ed], focus = (($(D.el + 'Focus') || {}).value || '').trim();
+  btn.disabled = true; const t0 = btn.textContent; btn.textContent = 'Asking…';
+  try {
+    const slug = `menu-${ed}-${istDay()}`;
+    await commitFiles([buildFile(slug, 'menu', focus ? `Editor's focus: ${focus}` : '', { edition: ed, manual: true })], `rm-inbox: suggest ${ed} deep-dive subjects now${focus ? ' (' + focus + ')' : ''}`);
+    msg(D.el + 'Msg', 'ok', 'Searching our sources now — 4–5 subjects arrive here in about 10–15 minutes; then tap <b>Build this</b> on the one you want.'); pollLive(2500);
+    if ($(D.el + 'Focus')) $(D.el + 'Focus').value = '';
+  } catch (e) { msg(D.el + 'Msg', 'err', esc(e.message)) }
+  btn.disabled = false; btn.textContent = t0;
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-ddsuggest]'); if (b) ddSuggest(b.dataset.ddsuggest, b) });
 async function ddToggle(ed) {
   if (ddBusy[ed]) return;
   const D = DD[ed], tg = $(D.el + 'Toggle'), turnOn = !tg.dataset.on;

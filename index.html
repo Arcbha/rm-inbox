@@ -50,6 +50,7 @@ h1 .logo{width:34px;height:34px;flex:none;border-radius:10px;box-shadow:0 6px 16
 /* bookmarks */
 .bmgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media (min-width:520px){.bmgrid{grid-template-columns:1fr 1fr 1fr}}
+.ddsuggest{display:flex;gap:8px;align-items:center;margin-top:10px}.ddsuggest input{flex:1;min-width:0;margin:0}.ddsuggest .btn{flex:0 0 auto;white-space:nowrap}
 .mbuild{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}.mbuild summary{font-weight:650;cursor:pointer;padding:4px 0}.mbuild input{margin-top:8px}
 .bm .again{border:0;background:none;color:var(--accent,#1f5eff);font-weight:650;padding:0}
 .bm{background:var(--surf);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
@@ -399,6 +400,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <div class="switch"><div><h2>Midday deep dive</h2><p class="hint" id="ddMidHint" style="margin:0">—</p></div>
           <button class="btn ghost small" id="ddMidToggle" disabled>…</button></div>
         <div id="ddMidMenu"><div class="empty">Loading…</div></div>
+        <div class="ddsuggest"><input id="ddMidFocus" placeholder="focus (optional): banks, IT results, the rupee…"><button class="btn ghost small" type="button" data-ddsuggest="midday">Suggest subjects</button></div>
         <details class="mbuild"><summary>Build now with your own story</summary>
           <input id="ddMidLink" type="url" inputmode="url" placeholder="news link (optional — else today's menu pick)">
           <input id="ddMidBNote" placeholder="optional note: the angle, what to stress">
@@ -412,6 +414,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <div class="switch"><div><h2>Evening deep dive</h2><p class="hint" id="ddEveHint" style="margin:0">—</p></div>
           <button class="btn ghost small" id="ddEveToggle" disabled>…</button></div>
         <div id="ddEveMenu"><div class="empty">Loading…</div></div>
+        <div class="ddsuggest"><input id="ddEveFocus" placeholder="focus (optional): banks, IT results, the rupee…"><button class="btn ghost small" type="button" data-ddsuggest="evening">Suggest subjects</button></div>
         <details class="mbuild"><summary>Build now with your own story</summary>
           <input id="ddEveLink" type="url" inputmode="url" placeholder="news link (optional — else today's menu pick)">
           <input id="ddEveBNote" placeholder="optional note: the angle, what to stress">
