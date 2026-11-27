@@ -244,6 +244,10 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;min-he
 .hist summary::-webkit-details-marker{display:none}
 .hist summary .when{display:block;margin:0 0 2px}
 .hist summary b{font-size:14px}
+.hist.latest{border:0;padding:4px 0 0}
+.hist.latest summary b{display:block;font-size:16px;margin-top:4px}
+.hist .more{display:block;font-size:13px;font-weight:600;color:var(--blue);margin-top:8px}
+.hist[open] .more{display:none}
 .hist ol{margin-top:8px}
 /* cover-art picker */
 .chosen{display:flex;align-items:center;gap:10px}
@@ -309,7 +313,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
     <nav class="tabs" role="tablist" data-noswipe>
       <button role="tab" data-tab="today" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z M4 9h16 M8 3v4 M16 3v4"/></svg><span>Pre &amp; Post</span></button>
       <button role="tab" data-tab="add" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z M8 9h8 M8 13h8 M8 17h5"/></svg><span>Newsroom</span></button>
-      <button role="tab" data-tab="saved" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-4-5 4z"/></svg><span>Bookmarks</span></button>
+      <button role="tab" data-tab="saved" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-4-5 4z"/></svg><span>Artwork</span></button>
       <button role="tab" data-tab="studio" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z M10 9l5 3-5 3z"/></svg><span>Studio</span></button>
       <button role="tab" data-tab="learn" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5V19c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z M12 6v13.5"/></svg><span>References</span></button>
       <button role="tab" data-tab="more" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01 M12 12h.01 M19 12h.01"/></svg><span>More</span></button>
@@ -329,8 +333,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="card">
         <div class="switch"><div><h2>Pre-market post</h2><p class="hint" id="pmHint" style="margin:0">—</p></div>
           <button class="btn ghost small" id="pmToggle" data-run="premarket" disabled>…</button></div>
-        <label>Cover art</label>
-        <div id="pmArt"><div class="empty">Loading…</div></div>
+                <div id="pmArt"><div class="empty">Loading…</div></div>
         <button class="btn ghost small" type="button" data-choose="premarket" style="margin-top:8px">Choose cover art</button>
         <div style="height:12px"></div><button class="btn primary" id="pmBuild">Build now</button>
         <div class="msg" id="pmMsg"></div>
@@ -338,8 +341,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="card">
         <div class="switch"><div><h2>Post-market post</h2><p class="hint" id="poHint" style="margin:0">—</p></div>
           <button class="btn ghost small" id="poToggle" data-run="postmarket" disabled>…</button></div>
-        <label>Cover art</label>
-        <div id="poArt"><div class="empty">Loading…</div></div>
+                <div id="poArt"><div class="empty">Loading…</div></div>
         <button class="btn ghost small" type="button" data-choose="postmarket" style="margin-top:8px">Choose cover art</button>
         <div style="height:12px"></div><button class="btn primary" id="poBuild">Build now</button>
         <div class="msg" id="poMsg"></div>
@@ -374,7 +376,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <div class="drop" id="nArtDrop" style="padding:16px 14px">Upload a picture
           <input id="nArt" type="file" accept="image/*" class="hide"></div>
         <div class="prev hide" id="nArtPrev"></div>
-        <p class="hint" style="margin:10px 2px 6px">or pick a bookmark</p>
+        <p class="hint" style="margin:10px 2px 6px">or pick from Artwork</p>
         <div class="picks" id="nArtPicks"><div class="empty">Loading…</div></div>
         <div style="height:14px"></div>
         <button class="btn primary" id="sendNews" disabled>Send story</button>
@@ -398,7 +400,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <textarea id="schLinks" placeholder="https://… (the first is the story; more links = second sources)" style="min-height:72px" autocapitalize="off" spellcheck="false"></textarea>
         <label for="schBrief">Brief</label>
         <textarea id="schBrief" placeholder="angle, what you want it to say, the mood…" style="min-height:72px"></textarea>
-        <label>Artwork from Bookmarks</label>
+        <label>Artwork</label>
         <div class="picks" id="schArt"><div class="empty">Nothing on the shelf yet.</div></div>
         <div style="height:14px"></div>
         <button class="btn primary" id="schSend" disabled>Schedule</button>
@@ -411,7 +413,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
     <!-- Bookmarks: the one place to save anything; a bookmark with pictures can be picked as artwork in Pre & Post and Newsroom -->
     <section data-pane="saved" class="hide">
       <div class="card">
-        <h2>Bookmark</h2>
+        <h2>Save artwork</h2>
         <input id="bmUrl" type="url" inputmode="url" placeholder="Paste a link — Instagram, YouTube, X, any site" autocapitalize="off" spellcheck="false">
         <div style="height:10px"></div>
         <div class="drop" id="bmDrop">…or paste, drop, or <b>choose screenshots</b>
@@ -420,11 +422,11 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <label for="bmNote">Note</label>
         <input id="bmNote" placeholder="optional — what you like about it">
         <div style="height:14px"></div>
-        <button class="btn primary" id="bmSave" disabled>Save bookmark</button>
+        <button class="btn primary" id="bmSave" disabled>Save</button>
         <div class="bar" id="bmBar"><i></i></div>
         <div class="msg" id="bmMsg"></div>
       </div>
-      <div class="libbar"><input id="bmQ" placeholder="Search bookmarks" autocapitalize="off"></div>
+      <div class="libbar"><input id="bmQ" placeholder="Search artwork" autocapitalize="off"></div>
       <div class="seg" id="bmFilter" data-noswipe></div>
       <div class="msg" id="bmListMsg"></div>
       <div class="bmgrid" id="bmGrid"><div class="empty">Loading…</div></div>
@@ -511,7 +513,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
 
     <div class="sheet hide" id="artSheet"><div class="in">
       <div class="top"><h2 id="artSheetTitle">Cover art</h2><button class="btn ghost small" id="artSheetClose" type="button">Close</button></div>
-      <p class="hint" style="margin:0 2px 10px">Tap a picture from your bookmarks.</p>
+      <p class="hint" style="margin:0 2px 10px">Tap a picture from your Artwork.</p>
       <div class="artgrid" id="artGrid"></div>
     </div></div>
     <div class="sheet hide" id="edSheet"><div class="in">

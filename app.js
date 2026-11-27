@@ -414,7 +414,7 @@ $('forget').onclick = () => { if (armTap($('forget'), 'Tap again to forget')) { 
 // ---------- tabs ----------
 // five tabs (editor 2026-11-26): Pre & Post · Newsroom · Saved Artwork · Studio · More (ids stay today/add/saved so saved tabs survive)
 let statusTimer = null;
-const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Bookmarks', studio: 'Studio', learn: 'References', more: 'More' };
+const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Artwork', studio: 'Studio', learn: 'References', more: 'More' };
 const OLDTAB = { refs: 'learn', news: 'add', plan: 'today', library: 'more', status: 'more' };
 const SUBS = { add: ['news', 'schedule'], more: ['library', 'mine', 'status'] };
 const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes(v) ? v : SUBS[g][0] };
@@ -1314,7 +1314,7 @@ function openArtSheet(slot) {
   $('artSheetTitle').textContent = `${RUNS[slot].name} cover art`;
   $('artGrid').innerHTML = `<button type="button" class="artpick none${cur.size ? '' : ' on'}" data-apick=""><span>No cover art<br><small>the studio makes its own</small></span></button>`
     + bmArt.map(b => `<button type="button" class="artpick${cur.has(b.id) ? ' on' : ''}" data-apick="${esc(b.id)}"><img data-pick-img="${esc(b.id)}" alt="" src="${bmThumb[b.id] || ''}"><span>${esc((b.note || b.id).slice(0, 40))}</span></button>`).join('')
-    + (bmArt.length ? '' : '<p class="hint" style="grid-column:1/-1">No bookmarks with pictures yet — save one in Bookmarks.</p>');
+    + (bmArt.length ? '' : '<p class="hint" style="grid-column:1/-1">No artwork with pictures yet — save one in Artwork.</p>');
   $('artSheet').classList.remove('hide'); document.body.style.overflow = 'hidden';
 }
 function closeArtSheet() { $('artSheet').classList.add('hide'); document.body.style.overflow = '' }
@@ -1373,11 +1373,11 @@ async function fillHistory(list) {
 function drawBrief(b, path) {
   nowBrief = { b, path };
   const host = u => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return '' } };
-  $('nowBrief').innerHTML = `<div class="when">${esc(b.date)} · ${esc(b.time_ist)} IST · ${esc(b.market_phase)}</div><div class="head">${esc(b.headline || '')}</div>
+  $('nowBrief').innerHTML = `<details class="hist latest"><summary><span class="when">${esc(b.date)} · ${esc(b.time_ist)} IST · ${esc(b.market_phase)}</span><b>${esc(b.headline || '')}</b><span class="more">Show the ${(b.points || []).length} points ▼</span></summary>
     <ol>${(b.points || []).map(p => `<li><b>${esc(p.title)}</b><div class="w">${esc(p.what)}</div><div class="y">${esc(p.why)}</div>
       ${(p.watch || []).length ? `<div class="tagrow" style="margin-top:4px">${p.watch.map(w => `<span class="tag">${esc(w)}</span>`).join('')}</div>` : ''}
       <div class="srcs">${(p.sources || []).map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.outlet || host(s.url))} ↗</a>`).join('')}</div></li>`).join('')}</ol>
-    <div class="row"><button class="btn ghost small" id="nowPost">Make it a carousel</button><button class="btn ghost small" id="nowCopy">Copy</button></div>`;
+    <div class="row"><button class="btn ghost small" id="nowPost">Make it a carousel</button><button class="btn ghost small" id="nowCopy">Copy</button></div></details>`;
   $('nowPost').onclick = () => briefToPost($('nowPost'));
   $('nowCopy').onclick = async () => {
     const t = `${b.headline}\n\n` + (b.points || []).map((p, i) => `${i + 1}. ${p.title} — ${p.what} ${p.why}`).join('\n');
@@ -1429,12 +1429,12 @@ function bmThumbFor(b) {
 }
 const pickBtn = (b, on, attr) => `<button type="button" class="tag${on ? ' on' : ''}" ${attr}="${esc(b.id)}"><img data-pick-img="${esc(b.id)}" alt="" src="${bmThumb[b.id] || ''}">${esc((b.note || b.id).slice(0, 24))}</button>`;
 function drawPicks() {
-  const none = '<div class="empty">No bookmarks with pictures yet — save one in Bookmarks.</div>';
+  const none = '<div class="empty">No artwork with pictures yet — save one in Artwork.</div>';
   bmArt.forEach(bmThumbFor);
   for (const [slot, R] of Object.entries(RUNS)) {          // the card shows only the chosen picture; Choose opens the picker
     const a = shelf.find(x => slotArt(slot, x)), b = a && bmArt.find(x => x.id === a.bookmark);
-    $(R.art).innerHTML = a ? `<div class="chosen"><img data-pick-img="${esc(b ? b.id : '')}" alt="" src="${b ? bmThumb[b.id] || '' : ''}"><span>${esc(b ? (b.note || b.id).slice(0, 48) : a.title || a.id)}</span></div>`
-      : '<p class="hint" style="margin:0">None — the studio makes its own cover.</p>';
+    $(R.art).innerHTML = '';
+    const cb = document.querySelector(`[data-choose="${slot}"]`); if (cb) cb.textContent = a ? 'Choose cover art · 1 set' : 'Choose cover art';
   }
   if (nArtId && !bmArt.some(b => b.id === nArtId)) nArtId = '';
   $('nArtPicks').innerHTML = bmArt.map(b => pickBtn(b, b.id === nArtId, 'data-npick')).join('') || none;
@@ -1576,7 +1576,7 @@ function drawBookmarks() {
     return `<div class="bm"><div class="bp" data-open="${esc(b.id)}"><span class="big">${esc(NAME[b.source] || 'Link')}</span><span class="src">${esc((b.source || '').toUpperCase())}</span>${(b.images || []).length > 1 ? `<span class="cnt">${b.images.length}</span>` : ''}</div>
       <div class="bb">${b.note ? `<div class="nt">${esc(b.note)}</div>` : ''}<div class="dt">${esc(day)}${host ? ' · ' + esc(host) : ''}</div>
       <div class="ba">${b.url ? `<a href="${esc(b.url)}" target="_blank" rel="noopener">Open ↗</a>` : '<span></span>'}<button data-del="${esc(b.id)}">Delete</button></div></div></div>`;
-  }).join('') || `<div class="empty" style="grid-column:1/-1">${bms.length ? 'Nothing matches.' : 'No bookmarks yet — save one above.'}</div>`;
+  }).join('') || `<div class="empty" style="grid-column:1/-1">${bms.length ? 'Nothing matches.' : 'Nothing saved yet — save one above.'}</div>`;
   for (const b of shown) {
     const el = $('bmGrid').querySelector(`[data-open="${CSS.escape(b.id)}"]`); if (!el) continue;
     const set = u => { el.style.backgroundImage = `url(${u})`; el.querySelector('.big').classList.add('hide') };
