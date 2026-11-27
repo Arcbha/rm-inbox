@@ -3,7 +3,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const API = 'https://api.github.com';
-const APP_VERSION = '2026-11-27d';   // shown in More's footer: which build the phone is running
+const APP_VERSION = '2026-11-27e';   // shown in More's footer: which build the phone is running
 const K = { tok: 'rm.token', repo: 'rm.repo', branch: 'rm.branch', tab: 'rm.tab' };
 const MAX_VIDEO = 90 * 1024 * 1024, MAX_SIDE = 2000, JPEG_Q = 0.85;
 
@@ -439,6 +439,16 @@ function drawRules() {
   const m = rulesMd.match(/_Generated from the repo by engine\/whitepaper\.py · ([^·]+) ·/);
   $('rulesStamp').textContent = m ? `From the repo · ${m[1].trim()}` : 'From the repo';
   $('rulesBody').innerHTML = mdRender(rulesMd, $('rulesQ').value.trim()) || '<div class="empty">Nothing matches.</div>';
+  // jump row (editor 2026-11-27): one chip per section, Carousels first so the carousel rulebook + its agents are one tap away
+  const secs = [...$('rulesBody').querySelectorAll('details')];
+  const short = s => s.replace(/^\d+\.\s*/, '').replace(/\s*\(.*$/, '').replace(/ — rulebook and agents$/, '');
+  const order = secs.map((d, i) => [d, i]).sort((x, y) => (/^\d+\.\s*Carousels/.test(y[0].firstChild.textContent) - /^\d+\.\s*Carousels/.test(x[0].firstChild.textContent)) || x[1] - y[1]);
+  $('rulesJump').innerHTML = order.map(([d, i]) => `<button type="button" data-i="${i}">${esc(short(d.firstChild.textContent))}</button>`).join('');
+  $('rulesJump').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const d = secs[+b.dataset.i], open = !b.classList.contains('on');
+    secs.forEach(s => s.open = false); $('rulesJump').querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    if (open) { d.open = true; b.classList.add('on'); d.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+  });
 }
 $('rulesQ').oninput = () => rulesMd && drawRules();
 $('rulesRefresh').onclick = () => loadRules(true);

@@ -262,6 +262,9 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;min-he
 .rules td,.rules th{border-top:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top}.rules th{color:var(--sub);font-weight:600}
 .rules details{border-top:1px solid var(--line);padding:8px 0}.rules details>summary{font-weight:700;font-size:16px;cursor:pointer;list-style:none}
 .rules details>summary::-webkit-details-marker{display:none}.rules details>summary::after{content:' ▾';color:var(--sub);font-weight:500}
+.rulejump{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:2px}
+.rulejump button{flex:none;border:0;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;font-weight:600;background:rgba(10,92,255,.08);color:var(--ink)}
+.rulejump button.on{background:var(--blue);color:#fff}
 .rules mark{background:rgba(10,92,255,.15);color:inherit;border-radius:3px}
 /* cover-art picker */
 .chosen{display:flex;align-items:center;gap:10px}
@@ -527,6 +530,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="card"><div class="row" style="justify-content:space-between"><div><h2>Rulebook</h2><p class="hint" id="rulesStamp" style="margin:0">—</p></div>
         <button class="btn ghost small" id="rulesRefresh">Refresh</button></div>
         <div class="libbar" style="margin-top:12px"><input id="rulesQ" placeholder="Search the rules" autocapitalize="off"></div>
+        <div class="rulejump" id="rulesJump"></div>
         <div class="msg" id="rulesMsg"></div></div>
       <div class="card rules" id="rulesBody"><div class="empty">Loading…</div></div>
       </div>
