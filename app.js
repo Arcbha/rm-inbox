@@ -115,7 +115,7 @@ function buildFile(slug, kind, note = '', extra = {}) {
   return { path: `studio/schedule/build/build-${istStamp()}-${slug}`.slice(0, 110) + '.json',
     b64: b64utf8(JSON.stringify({ slug, kind, note, ...extra, added: new Date().toISOString(), status: 'pending', by: 'rm-inbox' }, null, 2) + '\n') };
 }
-const KIND_WORD = { carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', revise: 'Fix', rate: 'Rating', resume: 'Answer' };
+const KIND_WORD = { menu: 'Deep-dive menu', midday: 'Midday deep dive', evening: 'Evening deep dive', carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', revise: 'Fix', rate: 'Rating', resume: 'Answer' };
 let artStatusAt = 0;
 function drawArtPrompt(st) {                       // editor 2026-11-27: "once artworks are all exhausted it can give a prompt at the header"
   const el = $('artPrompt'), off = (() => { try { return localStorage.getItem('rm.artPromptOff') === new Date().toDateString() } catch { return false } })();
@@ -1350,6 +1350,7 @@ async function loadPlan() {
       if (!runBusy[id] && (tapAt[id] || 0) < t0) setRunUI(id, run.enabled !== false, run);
       if (lr) $(R.hint).innerHTML += ` · last run ${esc(fmtDate(lr.date))}: ${esc(lr.status)}`;
     }
+    loadDeepDives(paths, rec).catch(e => msg('ddMidMsg', 'err', esc(e.message)));
     // artwork: shelf (newest 40) + uploads the Action hasn't filed yet
     const artJson = paths.filter(p => /^studio\/artwork\/[^/]+\/art\.json$/.test(p) && !p.startsWith('studio/artwork/queue/')).sort().reverse().slice(0, 40);
     const fresh = (await Promise.all(artJson.map(jsonAt))).filter(Boolean).sort((a, b) => (b.added || '').localeCompare(a.added || ''));
@@ -1452,6 +1453,84 @@ async function buildRun(slot) {
 $('pmBuild').onclick = () => buildRun('premarket');
 $('poBuild').onclick = () => buildRun('postmarket');
 
+// ---------- deep dives (editor 2026-11-27, Finance_Repo studio/schedule/DEEPDIVE.md) ----------
+// news/deepdive/<date>/<midday|evening>.json: 4–5 candidates (one stock/company, sector or macro theme each). Build this → chosen +
+// a build request; Skip today → skipped; nothing by the build time → the scheduler builds the top pick with the next artwork.
+const DD = { midday: { el: 'ddMid', name: 'Midday', menu: '10:30 am', build: '11:30 am', runs: ['midday-menu', 'midday'] },
+  evening: { el: 'ddEve', name: 'Evening', menu: '6:30 pm', build: '7:30 pm', runs: ['evening-menu', 'evening'] } };
+const LENS = { stock: 'Stock', company: 'Company', sector: 'Sector', macro: 'Macro' };
+let ddMenu = {}, ddBusy = {};
+async function loadDeepDives(paths, rec) {
+  for (const [ed, D] of Object.entries(DD)) {
+    const runs = (rec && rec.runs || []).filter(r => D.runs.includes(r.id));
+    const on = runs.length && runs.every(r => r.enabled !== false);
+    $(D.el + 'Hint').innerHTML = runs.length ? `<span class="pill ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span> Mon–Fri · menu ${D.menu} · builds ${D.build} IST` : 'Not set up yet.';
+    const tg = $(D.el + 'Toggle'); tg.textContent = on ? 'Turn off' : 'Turn on'; tg.disabled = !runs.length || !!ddBusy[ed]; tg.dataset.on = on ? '1' : '';
+    const p = `news/deepdive/${istDay()}/${ed}.json`;
+    if (ddBusy[ed]) continue;
+    ddMenu[ed] = paths.includes(p) ? await jsonAt(p) : null;
+    drawDeepDive(ed);
+  }
+}
+function drawDeepDive(ed) {
+  const D = DD[ed], m = ddMenu[ed], box = $(D.el + 'Menu');
+  if (!m || !(m.candidates || []).length) { box.innerHTML = `<div class="empty">Today's menu arrives at ${D.menu} IST — 4–5 subjects to choose from.</div>`; return }
+  const pick = (m.candidates || []).find(c => c.id === (m.chosen || '')), top = m.top || m.candidates[0].id;
+  if (m.status === 'skipped') { box.innerHTML = `<div class="ddstate">Skipped today${m.skipped_why ? ` — ${esc(m.skipped_why)}` : ''}.</div>`; return }
+  if (['chosen', 'auto', 'building', 'built'].includes(m.status) && pick) {
+    const w = { chosen: 'You chose', auto: 'Top pick (no choice in time)', building: 'Building', built: 'Built — in Studio' }[m.status];
+    box.innerHTML = `<div class="ddstate"><b>${w}:</b> ${esc(pick.title || pick.subject)}${m.note ? `<br><span class="hint">Note: ${esc(m.note)}</span>` : ''}</div>`; return }
+  const late = Date.now() > Date.parse(m.decide_by || 0);
+  box.innerHTML = `<p class="hint" style="margin:8px 0 4px">${late ? 'Building the top pick now…' : `Choose one — if you don't, the top pick builds itself at ${D.build} (${inT(m.decide_by)}).`}</p>`
+    + `<input class="ddnote" id="${D.el}Note" placeholder="optional note for the build">`
+    + m.candidates.map(c => `<div class="dd"><div class="k"><span class="pill">${esc(LENS[c.lens] || c.lens || '')}</span>${c.id === top ? '<span class="pill top">Top pick</span>' : ''}<span class="hint" style="margin:0">${esc(c.subject || '')}</span></div>
+      <h3>${esc(c.title || c.subject)}</h3>${c.why_today ? `<p><b>Why today:</b> ${esc(c.why_today)}</p>` : ''}${c.angle ? `<p><b>The angle:</b> ${esc(c.angle)}</p>` : ''}${c.not_a_repeat ? `<p>${esc(c.not_a_repeat)}</p>` : ''}
+      <div class="row2"><button class="btn ${c.id === top ? 'primary' : 'ghost'} small" type="button" data-ddbuild="${ed}:${esc(c.id)}">Build this</button></div></div>`).join('')
+    + `<div class="row2" style="margin-top:6px"><button class="btn ghost small" type="button" data-ddskip="${ed}">Skip today</button></div>`;
+}
+async function ddChoose(ed, cid) {                   // cid '' = skip today
+  if (ddBusy[ed]) return;
+  const D = DD[ed], m = ddMenu[ed], path = `news/deepdive/${istDay()}/${ed}.json`, note = (($(D.el + 'Note') || {}).value || '').trim();
+  const c = cid && m.candidates.find(x => x.id === cid);
+  ddBusy[ed] = true; msg(D.el + 'Msg', 'info', 'Saving…');
+  try {
+    const { repo } = cfg(); let gone = false;
+    await commitFiles(cid ? [buildFile(`${ed}-${istDay()}`, ed, note, { prefer: '' })] : [], `rm-inbox: ${ed} deep dive — ${cid ? 'build ' + (c.subject || cid) : 'skip today'}`, null, async head => {
+      const r = await api(`/repos/${repo}/contents/${path}?ref=${head}`);
+      const j = JSON.parse(utf8b64(r.content));
+      if (['chosen', 'auto', 'building', 'built', 'skipped'].includes(j.status)) { gone = true; throw new Error(`Already ${j.status} — refresh to see it.`) }
+      Object.assign(j, cid ? { status: 'chosen', chosen: cid, note, chosen_at: new Date().toISOString(), by: 'rm-inbox' } : { status: 'skipped', skipped_why: 'skipped in RM Inbox', by: 'rm-inbox' });
+      ddMenu[ed] = j;
+      return [{ path, b64: b64utf8(JSON.stringify(j, null, 2) + '\n') }];
+    });
+    drawDeepDive(ed);
+    msg(D.el + 'Msg', 'ok', cid ? 'Building on GitHub now (about 30–60 minutes) — follow it in the bar at the top; it lands in <b>Studio</b>.' : `Skipped — no ${D.name.toLowerCase()} deep dive today.`);
+    if (cid) pollLive(2500);
+  } catch (e) { msg(D.el + 'Msg', 'err', esc(e.message)) }
+  ddBusy[ed] = false;
+}
+async function ddToggle(ed) {
+  if (ddBusy[ed]) return;
+  const D = DD[ed], tg = $(D.el + 'Toggle'), turnOn = !tg.dataset.on;
+  ddBusy[ed] = true; tg.disabled = true;
+  try {
+    const { repo } = cfg();
+    await commitFiles([], `rm-inbox: ${ed} deep dive ${turnOn ? 'on' : 'off'}`, null, async head => {
+      const r = await api(`/repos/${repo}/contents/studio/schedule/recurring.json?ref=${head}`);
+      const j = JSON.parse(utf8b64(r.content)); (j.runs || []).forEach(x => { if (D.runs.includes(x.id)) x.enabled = turnOn });
+      return [{ path: 'studio/schedule/recurring.json', b64: b64utf8(JSON.stringify(j, null, 2) + '\n') }];
+    });
+    tg.dataset.on = turnOn ? '1' : ''; tg.textContent = turnOn ? 'Turn off' : 'Turn on';
+    $(D.el + 'Hint').innerHTML = `<span class="pill ${turnOn ? 'on' : 'off'}">${turnOn ? 'ON' : 'OFF'}</span> Mon–Fri · menu ${D.menu} · builds ${D.build} IST`;
+    msg(D.el + 'Msg', 'ok', turnOn ? `On — a menu every market day at ${D.menu}.` : `Off — no ${D.name.toLowerCase()} deep dive until you turn it on.`);
+  } catch (e) { msg(D.el + 'Msg', 'err', esc(e.message)) }
+  ddBusy[ed] = false; tg.disabled = false;
+}
+$('ddMidToggle').onclick = () => ddToggle('midday'); $('ddEveToggle').onclick = () => ddToggle('evening');
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-ddbuild]'); if (b) { const [ed, id] = b.dataset.ddbuild.split(':'); return ddChoose(ed, id) }
+  const k = e.target.closest('[data-ddskip]'); if (k) ddChoose(k.dataset.ddskip, '');
+});
 // "Top 5 now": a request file → Finance_Repo's market-now Action runs Claude Code → news/morning/<date>/brief-<HHMM>.json
 let nowTimer = null, nowBrief = null;
 async function loadNow(paths) {
