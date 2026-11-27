@@ -481,12 +481,13 @@ const ist = iso => { const d = new Date(iso), t = d.toLocaleString('en-IN', { ti
   const day = d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }), today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
   return day === today ? t : `${day}, ${t}` };
 const inT = iso => { const m = Math.round((Date.parse(iso) - Date.now()) / 60000); return m <= 0 ? 'now' : m < 60 ? `in ${m} min` : m < 2880 ? `in ${Math.floor(m / 60)} h ${m % 60} min` : `in ${Math.round(m / 1440)} days` };
-let usageAt = 0;
+let usageAt = 0, lastUsage = null;
 async function loadUsage(force) {
   if (!cfg().tok || (!force && Date.now() - usageAt < 60000)) return; usageAt = Date.now();
   let u;
   try { u = JSON.parse(utf8b64((await api(`/repos/${cfg().repo}/contents/usage.json?ref=usage`)).content)) }
-  catch (e) { $('usageList').innerHTML = `<div class="empty">${e.status === 404 ? 'No reading yet — tap Refresh.' : esc(e.message || 'Could not read usage.')}</div>`; return }
+  catch (e) { $('usageList').innerHTML = `<div class="empty">${e.status === 404 ? 'No reading yet — tap Refresh (takes about a minute).' : esc(e.message || 'Could not read usage.')}</div>`; return }
+  lastUsage = u.updated;
   $('usageHint').textContent = `checked ${ist(u.updated)} IST · ${dur(mins(u.updated))} ago`;
   const bar = (name, w) => { if (!w || w.left == null) return '';
     const c = w.left <= 15 ? 'low' : w.left <= 40 ? 'mid' : '';
@@ -498,9 +499,14 @@ async function loadUsage(force) {
 $('usageGo').onclick = async () => {
   const b = $('usageGo'); b.disabled = true; $('usageMsg').textContent = 'Checking… (about a minute)';
   try {
-    await api(`/repos/${cfg().repo}/actions/workflows/usage.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main' }) });
-    setTimeout(async () => { await loadUsage(true); setTimeout(() => loadUsage(true), 40000); $('usageMsg').textContent = ''; b.disabled = false }, 45000);
-  } catch (e) { b.disabled = false; $('usageMsg').textContent = e.status === 403 ? 'Your GitHub token needs "Actions: Read and write" on Finance_Repo to refresh — it updates by itself every 3 hours.' : (e.message || 'Could not start the check.') }
+    await api(`/repos/${cfg().repo}/dispatches`, { method: 'POST', body: JSON.stringify({ event_type: 'usage-refresh' }) });
+    const t0 = Date.now(), tick = async () => {               // the check takes ~30–60 s; poll until a newer reading lands
+      await loadUsage(true);
+      if (Date.parse(lastUsage || 0) > t0 - 5000 || Date.now() - t0 > 180000) { $('usageMsg').textContent = Date.now() - t0 > 180000 ? 'Still waiting — it will show here when the check finishes.' : ''; b.disabled = false; return }
+      setTimeout(tick, 15000);
+    };
+    setTimeout(tick, 30000);
+  } catch (e) { b.disabled = false; $('usageMsg').textContent = e.status === 403 || e.status === 404 ? 'Your GitHub token needs "Contents: Read and write" on Finance_Repo to refresh — it also updates by itself every 3 hours.' : (e.message || 'Could not start the check.') }
 };
 function showTab(t) {
   t = OLDTAB[t] || t; if (!TITLE[t]) t = 'today';
