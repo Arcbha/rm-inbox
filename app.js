@@ -473,6 +473,35 @@ const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Artwork', s
 const OLDTAB = { refs: 'learn', news: 'add', plan: 'today', library: 'more', status: 'more' };
 const SUBS = { add: ['news', 'schedule'], more: ['library', 'mine', 'status', 'rules'] };
 const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes(v) ? v : SUBS[g][0] };
+// ---------- Claude usage left (editor 2026-11-27: "I want to know usage left only … and when it refreshes back") ----------
+// Finance_Repo's usage Action (every 3 h, after every build, and on Refresh) writes usage.json on the `usage` branch:
+// per account the 5-hour window and the weekly limit as % left + reset time. Plans have no token count, only these.
+const ACCT = { A: 'Account A', B: 'Account B', main: 'Main token' };
+const ist = iso => { const d = new Date(iso), t = d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' });
+  const day = d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }), today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
+  return day === today ? t : `${day}, ${t}` };
+const inT = iso => { const m = Math.round((Date.parse(iso) - Date.now()) / 60000); return m <= 0 ? 'now' : m < 60 ? `in ${m} min` : m < 2880 ? `in ${Math.floor(m / 60)} h ${m % 60} min` : `in ${Math.round(m / 1440)} days` };
+let usageAt = 0;
+async function loadUsage(force) {
+  if (!cfg().tok || (!force && Date.now() - usageAt < 60000)) return; usageAt = Date.now();
+  let u;
+  try { u = JSON.parse(utf8b64((await api(`/repos/${cfg().repo}/contents/usage.json?ref=usage`)).content)) }
+  catch (e) { $('usageList').innerHTML = `<div class="empty">${e.status === 404 ? 'No reading yet — tap Refresh.' : esc(e.message || 'Could not read usage.')}</div>`; return }
+  $('usageHint').textContent = `checked ${ist(u.updated)} IST · ${dur(mins(u.updated))} ago`;
+  const bar = (name, w) => { if (!w || w.left == null) return '';
+    const c = w.left <= 15 ? 'low' : w.left <= 40 ? 'mid' : '';
+    return `<div class="ub"><span>${name}</span><span class="bar"><i class="${c}" style="width:${w.left}%"></i></span><b>${w.left}% left</b>${w.resets_at ? `<span></span><span class="r">refills ${inT(w.resets_at)} · ${ist(w.resets_at)}</span>` : ''}</div>` };
+  $('usageList').innerHTML = (u.accounts || []).map(a => `<div class="ua"><div class="h"><span>${esc(ACCT[a.label] || a.label)}</span>${a.ok ? '' : '<span style="color:var(--loss)">couldn\'t read</span>'}</div>${a.ok
+    ? bar('5-hour', a.session) + bar('Weekly', a.weekly)
+    : `<div class="ub"><span></span><span class="r" style="grid-column:1/4">${a.limited_until ? `At its limit — free again ${inT(a.limited_until)} · ${ist(a.limited_until)}` : 'Check the token in GitHub Secrets.'}</span></div>`}</div>`).join('') || '<div class="empty">No Claude token secrets found.</div>';
+}
+$('usageGo').onclick = async () => {
+  const b = $('usageGo'); b.disabled = true; $('usageMsg').textContent = 'Checking… (about a minute)';
+  try {
+    await api(`/repos/${cfg().repo}/actions/workflows/usage.yml/dispatches`, { method: 'POST', body: JSON.stringify({ ref: 'main' }) });
+    setTimeout(async () => { await loadUsage(true); setTimeout(() => loadUsage(true), 40000); $('usageMsg').textContent = ''; b.disabled = false }, 45000);
+  } catch (e) { b.disabled = false; $('usageMsg').textContent = e.status === 403 ? 'Your GitHub token needs "Actions: Read and write" on Finance_Repo to refresh — it updates by itself every 3 hours.' : (e.message || 'Could not start the check.') }
+};
 function showTab(t) {
   t = OLDTAB[t] || t; if (!TITLE[t]) t = 'today';
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
@@ -480,7 +509,7 @@ function showTab(t) {
   store.set(K.tab, t);
   $('pageTitle').textContent = TITLE[t]; $('pageTitle').classList.remove('hide');
   clearInterval(statusTimer);
-  if (t === 'today') loadPlan();
+  if (t === 'today') { loadPlan(); loadUsage() }
   if (t === 'saved') loadBookmarks();
   if (t === 'studio') loadReels();
   if (SUBS[t]) showSub(t, subOf(t));
