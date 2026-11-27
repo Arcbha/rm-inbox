@@ -1186,6 +1186,34 @@ async function to45jpeg(blob) {
   g.drawImage(bmp, (W - w) / 2, (H - h) / 2, w, h);
   return await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.92));
 }
+// Gallery order (editor 2026-11-27: "When it gets downloaded the sequence gets all messed up"). Android's gallery and Instagram's
+// picker sort newest first, by "date taken" (EXIF) or by when the file arrived — to the second. So every slide carries an EXIF
+// capture time one second apart with 01 the NEWEST, and the files download last-to-first (09 … 01) 1.2 s apart: the picker then
+// shows 01, 02, 03 … from the top-left, the order you tap them in.
+function withExifTime(buf, date) {                  // buf: ArrayBuffer of a JPEG → Uint8Array with an Exif APP1 (DateTime, DateTimeOriginal, DateTimeDigitized)
+  const p2 = n => String(n).padStart(2, '0');
+  const ts = `${date.getFullYear()}:${p2(date.getMonth() + 1)}:${p2(date.getDate())} ${p2(date.getHours())}:${p2(date.getMinutes())}:${p2(date.getSeconds())}\0`;
+  const t = new Uint8Array(128), v = new DataView(t.buffer), str = (o, x) => { for (let i = 0; i < x.length; i++) t[o + i] = x.charCodeAt(i) };
+  str(0, 'MM'); v.setUint16(2, 42); v.setUint32(4, 8);                       // big-endian TIFF, IFD0 at 8
+  const ent = (o, tag, type, count, val) => { v.setUint16(o, tag); v.setUint16(o + 2, type); v.setUint32(o + 4, count); v.setUint32(o + 8, val) };
+  v.setUint16(8, 2); ent(10, 0x0132, 2, 20, 38); ent(22, 0x8769, 4, 1, 58); v.setUint32(34, 0); str(38, ts);
+  v.setUint16(58, 2); ent(60, 0x9003, 2, 20, 88); ent(72, 0x9004, 2, 20, 108); v.setUint32(84, 0); str(88, ts); str(108, ts);
+  const app1 = new Uint8Array(4 + 6 + t.length); app1.set([0xFF, 0xE1, (app1.length - 2) >> 8, (app1.length - 2) & 255]);
+  app1.set([0x45, 0x78, 0x69, 0x66, 0, 0], 4); app1.set(t, 10);
+  const j = new Uint8Array(buf); let at = 2;                                  // after SOI, and after a JFIF APP0 if there is one
+  if (j[2] === 0xFF && j[3] === 0xE0) at = 4 + ((j[4] << 8) | j[5]);
+  const out = new Uint8Array(j.length + app1.length); out.set(j.subarray(0, at)); out.set(app1, at); out.set(j.subarray(at), at + app1.length);
+  return out;
+}
+async function saveInOrder(files) {                 // 09 … 01, 1.2 s apart, each JPEG stamped (01 newest) — see withExifTime
+  const now = Date.now(), n = files.length;
+  for (let i = n - 1; i >= 0; i--) {
+    let f = files[i];
+    if (f.type === 'image/jpeg') f = new File([withExifTime(await f.arrayBuffer(), new Date(now - i * 1000))], f.name, { type: 'image/jpeg' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+    if (i) await new Promise(r => setTimeout(r, 1200));
+  }
+}
 // Instagram's Android share import square-crops slides after the first few, whatever ratio is picked later (editor 2026-11-27,
 // screenshot: slide 3 portrait, slide 4 boxed). Reliable route: save the slides to the phone and post from Instagram's own gallery.
 document.addEventListener('click', async e => {
@@ -1194,8 +1222,9 @@ document.addEventListener('click', async e => {
   b.disabled = true;
   try {
     const files = ready[key] || (ready[key] = await prepareCarousel(c, id));
-    for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r => setTimeout(r, 450)) }
-    msg(id, 'ok', `Saved ${files.length} slides to your phone (${esc(c.slug)}-01 … -${String(files.length).padStart(2, '0')}, each 1080×1350).<br>In Instagram: <b>+ → Post</b> → tap <b>Select multiple</b> → tap the <b>⤢ crop icon</b> on the first photo so it shows portrait → pick 01, 02, … in order → Next.${c.caption ? ' The caption is copied — paste it.' : ''}`);
+    msg(id, 'info', `Saving ${files.length} slides in order… keep this page open (about ${Math.ceil(files.length * 1.2)} s).`);
+    await saveInOrder(files);
+    msg(id, 'ok', `Saved ${files.length} slides to your phone (${esc(c.slug)}-01 … -${String(files.length).padStart(2, '0')}, each 1080×1350). In your gallery they sit in order: <b>01 first (top-left), then 02, 03 …</b><br>In Instagram: <b>+ → Post</b> → tap <b>Select multiple</b> → tap the <b>⤢ crop icon</b> on the first photo so it shows portrait → tap the first ${files.length} photos left to right → Next.${c.caption ? ' The caption is copied — paste it.' : ''}`);
     if (c.caption && navigator.clipboard) navigator.clipboard.writeText(c.caption).catch(() => {});
   } catch (err) { msg(id, 'err', esc(err.message || String(err))) }
   b.disabled = false;
@@ -1212,8 +1241,7 @@ function shareCarousel(ci, btn) {
       msg(id, 'info', (c.caption ? 'Caption copied. Pick Instagram → Feed; the slides arrive in order (01 first). Paste the caption.' : 'Pick Instagram → Feed; the slides arrive in order (01 first).') + ' If Instagram boxes the later slides into squares, cancel and use “Save to phone” below instead — posting from Instagram’s gallery keeps every slide portrait.');
       p.then(() => msg(id, 'ok', 'Shared. In Instagram: Next → paste the caption → Share.')).catch(e => { if (e && e.name === 'AbortError') clearMsg(id); else msg(id, 'err', esc(e.message || String(e))) });
     } else {
-      (async () => { for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)) }
-        msg(id, 'ok', `Downloaded ${files.length} files (01 first).`) })();
+      (async () => { await saveInOrder(files); msg(id, 'ok', `Downloaded ${files.length} files: 01 first (top-left) in your gallery.`) })();
     }
     return;
   }
