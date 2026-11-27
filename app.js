@@ -489,7 +489,9 @@ let usageAt = 0, lastUsage = null;
 async function loadUsage(force) {
   if (!cfg().tok || (!force && Date.now() - usageAt < 60000)) return; usageAt = Date.now();
   let u;
-  try { u = JSON.parse(utf8b64((await api(`/repos/${cfg().repo}/contents/usage.json?ref=usage`)).content)) }
+  try {                                                  // read the usage branch at its newest commit: a branch-name read can be a minute stale
+    const ref = await api(`/repos/${cfg().repo}/git/ref/heads/usage?t=${Date.now()}`);
+    u = JSON.parse(utf8b64((await api(`/repos/${cfg().repo}/contents/usage.json?ref=${ref.object.sha}`)).content)) }
   catch (e) { $('usageList').innerHTML = `<div class="empty">${e.status === 404 ? 'No reading yet — tap Refresh (takes about a minute).' : esc(e.message || 'Could not read usage.')}</div>`; return }
   lastUsage = u.updated;
   $('usageHint').textContent = `checked ${ist(u.updated)} IST · ${dur(mins(u.updated))} ago`;
@@ -500,17 +502,29 @@ async function loadUsage(force) {
     ? bar('5-hour', a.session) + bar('Weekly', a.weekly)
     : `<div class="ub"><span></span><span class="r" style="grid-column:1/4">${a.limited_until ? `At its limit — free again ${inT(a.limited_until)} · ${ist(a.limited_until)}` : 'Check the token in GitHub Secrets.'}</span></div>`}</div>`).join('') || '<div class="empty">No Claude token secrets found.</div>';
 }
-$('usageGo').onclick = async () => {
-  const b = $('usageGo'); b.disabled = true; $('usageMsg').textContent = 'Checking… (about a minute)';
+let usageBusy = false;
+$('usageGo').onclick = async () => {        // editor 2026-11-28: "refresh … doesn't take a response" — show every step, never sit silent
+  if (usageBusy) return;
+  const b = $('usageGo'); usageBusy = true; b.disabled = true; b.textContent = 'Checking…';
+  const done = (kind, html) => { usageBusy = false; b.disabled = false; b.textContent = 'Refresh'; if (html) msg('usageMsg', kind, html); else clearMsg('usageMsg') };
+  msg('usageMsg', 'info', 'Asking GitHub to check both accounts…');
   try {
     await api(`/repos/${cfg().repo}/dispatches`, { method: 'POST', body: JSON.stringify({ event_type: 'usage-refresh' }) });
-    const t0 = Date.now(), tick = async () => {               // the check takes ~30–60 s; poll until a newer reading lands
-      await loadUsage(true);
-      if (Date.parse(lastUsage || 0) > t0 - 5000 || Date.now() - t0 > 180000) { $('usageMsg').textContent = Date.now() - t0 > 180000 ? 'Still waiting — it will show here when the check finishes.' : ''; b.disabled = false; return }
-      setTimeout(tick, 15000);
-    };
-    setTimeout(tick, 30000);
-  } catch (e) { b.disabled = false; $('usageMsg').textContent = e.status === 403 || e.status === 404 ? 'Your GitHub token needs "Contents: Read and write" on Finance_Repo to refresh — it also updates by itself every 3 hours.' : (e.message || 'Could not start the check.') }
+  } catch (e) {
+    return done('err', e.status === 403 || e.status === 404 ? 'Your GitHub token needs "Contents: Read and write" on Finance_Repo to refresh — it also updates by itself every 3 hours.' : esc(e.message || 'Could not start the check.'));
+  }
+  const t0 = Date.now();
+  msg('usageMsg', 'info', 'Checking… 0s (usually 20–40s)');
+  const tick = async () => {
+    const secs = Math.round((Date.now() - t0) / 1000);
+    msg('usageMsg', 'info', `Checking… ${secs}s (usually 20–40s)`);
+    try { await loadUsage(true) } catch {}
+    if (Date.parse(lastUsage || 0) > t0 - 5000) return done('ok', 'Updated just now.') || setTimeout(() => clearMsg('usageMsg'), 4000);
+    if (Date.now() - t0 > 150000) return done('err', 'No new reading yet — GitHub may be slow. It will show here by itself; tap Refresh again in a minute.');
+    setTimeout(tick, 8000);
+  };
+  setTimeout(tick, 12000);
+  const sec = setInterval(() => { if (!usageBusy) return clearInterval(sec); const el = $('usageMsg'); if (/^Checking… \d+s/.test(el.textContent)) el.textContent = el.textContent.replace(/\d+s/, Math.round((Date.now() - t0) / 1000) + 's') }, 1000);
 };
 function showTab(t) {
   t = OLDTAB[t] || t; if (!TITLE[t]) t = 'today';
