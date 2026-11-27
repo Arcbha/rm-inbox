@@ -3,7 +3,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const API = 'https://api.github.com';
-const APP_VERSION = '2026-11-27c';   // shown in More's footer: which build the phone is running
+const APP_VERSION = '2026-11-27d';   // shown in More's footer: which build the phone is running
 const K = { tok: 'rm.token', repo: 'rm.repo', branch: 'rm.branch', tab: 'rm.tab' };
 const MAX_VIDEO = 90 * 1024 * 1024, MAX_SIDE = 2000, JPEG_Q = 0.85;
 
@@ -1099,8 +1099,8 @@ function drawCarousels() {
       <div class="body"><div class="note" style="font-size:15px">${esc(c.title || c.slug)}</div>
         <div class="tagrow" style="margin-top:2px"><span class="tag">${c.slides.length} slides</span><span class="tag">${esc(c.theme || '')}</span></div>
         <div class="meta"><span>${esc(c.slug)} · audit ${st(c.audit)}</span></div>
-        <div class="acts"><button class="btn ghost small danger" data-pdel="${esc(c.slug)}" style="flex:none">Delete</button><button class="btn primary small" data-share="${ci}">${ready[cars[ci].slug + cars[ci].rendered] ? `Open share sheet · ${cars[ci].slides.length} ready` : 'Post to Instagram'}</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
-        <div class="acts"><button class="btn ghost small" data-save="${ci}" style="flex:1">Save to phone (1080×1350)</button></div>
+        <div class="acts"><button class="btn ghost small danger" data-pdel="${esc(c.slug)}" style="flex:none">Delete</button><button class="btn primary small" data-share="${ci}">${c.slides.length > 3 ? 'Save for Instagram' : ready[cars[ci].slug + cars[ci].rendered] ? `Open share sheet · ${cars[ci].slides.length} ready` : 'Post to Instagram'}</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
+        <div class="acts${c.slides.length > 3 ? ' hide' : ''}"><button class="btn ghost small" data-save="${ci}" style="flex:1">Save to phone (1080×1350)</button></div>
         <div class="acts"><button class="btn ghost small" data-edit="${ci}">Edit…</button><button class="btn ghost small" data-rate="published" data-ci="${ci}">Published</button><button class="btn ghost small" data-rate="not-published" data-ci="${ci}">Not posted</button></div>
         <div class="msg" id="carMsg${ci}"></div></div></div>`).join('');
   cars.forEach((c, ci) => c.slides.forEach((s, i) => {
@@ -1170,6 +1170,9 @@ document.addEventListener('click', async e => {
 });
 function shareCarousel(ci, btn) {
   const c = cars[ci], id = 'carMsg' + ci, key = c.slug + c.rendered, files = ready[key];
+  if (c.slides.length > 3) {                          // Instagram's share import squares slides 4+ (editor 2026-11-27): save, then post from the gallery
+    const sv = document.querySelector(`[data-save="${ci}"]`); if (sv) sv.click(); return;
+  }
   if (files) {                                      // tap 2 — no await before share(): we're still inside the tap
     if (navigator.canShare && navigator.canShare({ files })) {
       const p = navigator.share({ files, title: c.title || c.slug });
