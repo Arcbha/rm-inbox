@@ -1850,8 +1850,7 @@ function drawBookmarks() {
   const FILT = { unused: b => !isUsed(b), used: isUsed };
   $('bmFilter').innerHTML = BM_SRC.map(([k, n]) => `<button class="${bmSrc === k ? 'on' : ''}" data-f="${k}">${n} · ${bms.filter(FILT[k]).length}</button>`).join('');
   $('bmFilter').querySelectorAll('button').forEach(b => b.onclick = () => { bmSrc = b.dataset.f; drawBookmarks() });
-  const q = $('bmQ').value.trim().toLowerCase();
-  const shown = bms.filter(b => (FILT[bmSrc] || FILT.unused)(b) && (!q || `${b.note} ${b.url}`.toLowerCase().includes(q)));
+  const shown = bms.filter(b => (FILT[bmSrc] || FILT.unused)(b));
   const NAME = { ig: 'Instagram', yt: 'YouTube', x: 'X', web: 'Link', shot: 'Picture' };
   $('bmGrid').innerHTML = shown.map(b => {
     const host = (() => { try { return new URL(b.url).hostname.replace(/^www\./, '') } catch { return '' } })();
@@ -1909,7 +1908,6 @@ async function deleteBm(btn, id) {
     bms = bms.filter(b => b.id !== id); bmPaths = bmPaths.filter(p => !p.startsWith(`bookmarks/${id}/`)); drawBookmarks();
   } catch (e) { msg('bmListMsg', 'err', esc(e.message)); btn.disabled = false }
 }
-$('bmQ').oninput = drawBookmarks;
 $('bmMore').onclick = () => { bmShown += 60; loadBookmarks(true) };
 
 // ---------- quick tags: one tap adds a tag the studio routes on (pacing → pacer agent, transitions → transitioner agent) ----------
