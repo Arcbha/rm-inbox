@@ -5,7 +5,7 @@ A static page that feeds the Rupee Mechanics studio. Five tabs in a bottom bar:
 - **Pre & Post** — Market now (Top 5 now, **Earlier briefs** expands the history); the pre-market (7:45 IST) and post-market (5:45 pm IST) posts, each with an on/off switch (instant, one save per tap), **Choose cover art** (a picker over your bookmarks; the card shows only the chosen one) and **Build now**.
 - **Newsroom** — News (link and/or screenshots, Make a, note, cover art reference: upload or a bookmark, Send / Send & build now) · Schedule (+ the scheduled list).
 - **References** — learning material for the agents (links, screenshots, videos, carousels); the hourly GitHub scheduler queues a study run when something new is waiting. Sharing a link from the phone asks: Bookmark, Teach the AI, or News story.
-- **Bookmarks** — the one place to save anything (a link and/or screenshots). Private, except a bookmark you pick as artwork: its first picture is copied for that post.
+- **Artwork** (was Bookmarks) — the one place to save anything (a link and/or screenshots). Private, except a bookmark you pick as artwork: its first picture is copied for that post.
 - **Studio** — rendered carousels and reels, newest version of each post only; per carousel **Delete**, **Fix…** (a note → the studio applies it and re-renders), **Published / Not posted** (rating).
 - **Live bar** (under the header, on every tab) — what is building, the agent and stage, the account, paused/failed runs with **Retry**, and questions from the studio with an answer box. Reads the `live` branch + `studio/schedule/build/` + blocked `studio/jobs/`.
 - **More** — the reference library, what you sent, studio status, Forget token.
