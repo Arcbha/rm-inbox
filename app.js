@@ -3,6 +3,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const API = 'https://api.github.com';
+const APP_VERSION = '2026-11-27c';   // shown in More's footer: which build the phone is running
 const K = { tok: 'rm.token', repo: 'rm.repo', branch: 'rm.branch', tab: 'rm.tab' };
 const MAX_VIDEO = 90 * 1024 * 1024, MAX_SIDE = 2000, JPEG_Q = 0.85;
 
@@ -448,7 +449,7 @@ function boot() {
   $('repo').value = c.repo; $('branch').value = c.branch;
   const on = !!c.tok;
   $('setup').classList.toggle('hide', on); $('app').classList.toggle('hide', !on);
-  $('repoLbl').textContent = on ? `${c.repo} · ${c.branch}` : '';
+  $('repoLbl').textContent = on ? `${c.repo} · ${c.branch} · app ${APP_VERSION}` : '';
   $('who').textContent = '';
   if (on) { pollLive(800); showTab(store.get(K.tab) || 'today'); api('/user').then(u => $('who').textContent = '@' + u.login).catch(() => {}) }
 }
@@ -1099,6 +1100,7 @@ function drawCarousels() {
         <div class="tagrow" style="margin-top:2px"><span class="tag">${c.slides.length} slides</span><span class="tag">${esc(c.theme || '')}</span></div>
         <div class="meta"><span>${esc(c.slug)} · audit ${st(c.audit)}</span></div>
         <div class="acts"><button class="btn ghost small danger" data-pdel="${esc(c.slug)}" style="flex:none">Delete</button><button class="btn primary small" data-share="${ci}">${ready[cars[ci].slug + cars[ci].rendered] ? `Open share sheet · ${cars[ci].slides.length} ready` : 'Post to Instagram'}</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
+        <div class="acts"><button class="btn ghost small" data-save="${ci}" style="flex:1">Save to phone (1080×1350)</button></div>
         <div class="acts"><button class="btn ghost small" data-edit="${ci}">Edit…</button><button class="btn ghost small" data-rate="published" data-ci="${ci}">Published</button><button class="btn ghost small" data-rate="not-published" data-ci="${ci}">Not posted</button></div>
         <div class="msg" id="carMsg${ci}"></div></div></div>`).join('');
   cars.forEach((c, ci) => c.slides.forEach((s, i) => {
@@ -1152,13 +1154,27 @@ async function to45jpeg(blob) {
   g.drawImage(bmp, (W - w) / 2, (H - h) / 2, w, h);
   return await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.92));
 }
+// Instagram's Android share import square-crops slides after the first few, whatever ratio is picked later (editor 2026-11-27,
+// screenshot: slide 3 portrait, slide 4 boxed). Reliable route: save the slides to the phone and post from Instagram's own gallery.
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-save]'); if (!b) return;
+  const ci = +b.dataset.save, c = cars[ci], id = 'carMsg' + ci, key = c.slug + c.rendered;
+  b.disabled = true;
+  try {
+    const files = ready[key] || (ready[key] = await prepareCarousel(c, id));
+    for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r => setTimeout(r, 450)) }
+    msg(id, 'ok', `Saved ${files.length} slides to your phone (${esc(c.slug)}-01 … -${String(files.length).padStart(2, '0')}, each 1080×1350).<br>In Instagram: <b>+ → Post</b> → tap <b>Select multiple</b> → tap the <b>⤢ crop icon</b> on the first photo so it shows portrait → pick 01, 02, … in order → Next.${c.caption ? ' The caption is copied — paste it.' : ''}`);
+    if (c.caption && navigator.clipboard) navigator.clipboard.writeText(c.caption).catch(() => {});
+  } catch (err) { msg(id, 'err', esc(err.message || String(err))) }
+  b.disabled = false;
+});
 function shareCarousel(ci, btn) {
   const c = cars[ci], id = 'carMsg' + ci, key = c.slug + c.rendered, files = ready[key];
   if (files) {                                      // tap 2 — no await before share(): we're still inside the tap
     if (navigator.canShare && navigator.canShare({ files })) {
       const p = navigator.share({ files, title: c.title || c.slug });
       if (c.caption && navigator.clipboard) navigator.clipboard.writeText(c.caption).catch(() => {});
-      msg(id, 'info', (c.caption ? 'Caption copied. Pick Instagram → Feed; the slides arrive in order (01 first). Paste the caption.' : 'Pick Instagram → Feed; the slides arrive in order (01 first).') + ' All slides are 4:5 (1080×1350): if Instagram shows squares, tap the ⤢ crop button on slide 1 before Next — it sets portrait for every slide.');
+      msg(id, 'info', (c.caption ? 'Caption copied. Pick Instagram → Feed; the slides arrive in order (01 first). Paste the caption.' : 'Pick Instagram → Feed; the slides arrive in order (01 first).') + ' If Instagram boxes the later slides into squares, cancel and use “Save to phone” below instead — posting from Instagram’s gallery keeps every slide portrait.');
       p.then(() => msg(id, 'ok', 'Shared. In Instagram: Next → paste the caption → Share.')).catch(e => { if (e && e.name === 'AbortError') clearMsg(id); else msg(id, 'err', esc(e.message || String(e))) });
     } else {
       (async () => { for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)) }
