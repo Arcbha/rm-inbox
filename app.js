@@ -3,7 +3,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const API = 'https://api.github.com';
-const APP_VERSION = '2026-11-27f';   // shown in More's footer: which build the phone is running
+const APP_VERSION = '2026-11-28a';   // shown in More's footer: which build the phone is running
 const K = { tok: 'rm.token', repo: 'rm.repo', branch: 'rm.branch', tab: 'rm.tab' };
 const MAX_VIDEO = 90 * 1024 * 1024, MAX_SIDE = 2000, JPEG_Q = 0.85;
 
@@ -15,7 +15,6 @@ const store = {
 // Claude accounts (editor 2026-11-27): main token = Account Google (first), B = Account Outlook
 const ACCT = { main: 'Account Google', B: 'Account Outlook', A: 'Account A' };     // editor: Google first
 const ACCT_ORDER = ['main', 'B', 'A'];
-let skipDates = [], holidays = [], skipBusy = false;     // Skip a day (studio/schedule/pause.json)
 const cfg = () => ({ tok: store.get(K.tok), repo: store.get(K.repo) || 'Arcbha/Finance_Repo', branch: store.get(K.branch) || 'main' });
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const stamp = () => new Date().toISOString().replace(/[:.]/g, '-');
@@ -474,7 +473,7 @@ $('forget').onclick = () => { if (armTap($('forget'), 'Tap again to forget')) { 
 // ---------- tabs ----------
 // five tabs (editor 2026-11-26): Pre & Post · Newsroom · Saved Artwork · Studio · More (ids stay today/add/saved so saved tabs survive)
 let statusTimer = null;
-const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Artwork', studio: 'Studio', learn: 'References', more: 'More' };
+const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Artwork', studio: 'Studio', learn: 'Learning center', more: 'More' };
 const OLDTAB = { refs: 'learn', news: 'add', plan: 'today', library: 'more', status: 'more' };
 const SUBS = { add: ['news', 'schedule'], more: ['library', 'mine', 'status', 'rules'] };
 const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes(v) ? v : SUBS[g][0] };
@@ -533,7 +532,7 @@ function showTab(t) {
   store.set(K.tab, t);
   $('pageTitle').textContent = TITLE[t]; $('pageTitle').classList.remove('hide');
   clearInterval(statusTimer);
-  if (t === 'today') { loadPlan(); loadUsage(); loadSkip() }
+  if (t === 'today') { loadPlan(); loadUsage() }
   if (t === 'saved') loadBookmarks();
   if (t === 'studio') loadReels();
   if (SUBS[t]) showSub(t, subOf(t));
@@ -654,12 +653,17 @@ async function reroute(id, learn, sel) {
 // ---------- tab 1: references ----------
 const SRC = [[/(^|\.)(x|twitter)\.com$/, 'x'], [/(^|\.)instagram\.com$/, 'ig'], [/(^|\.)(youtube\.com|youtu\.be)$/, 'yt']];
 const srcOf = u => { try { const h = new URL(u).hostname; return (SRC.find(([re]) => re.test(h)) || [0, 'web'])[1] } catch { return null } };
-// who learns from a reference (the studio routes on it at /study); last option = let the studio decide
-const LEARN = [['hook', 'Visual hook — opening seconds'], ['second', 'Second frames — what follows the hook'], ['motion', 'Motion design — kinetic type, 3D, effects'],
-  ['pacing', 'Pacing — rhythm & timing (pacer)'], ['transitions', 'Transitions & easing (transitioner)'],
-  ['color', 'Colour & grading (colorist)'], ['script', 'Script & story (storyteller)'], ['carousel', 'Carousel format'], ['auto', 'Let the studio decide (general)']];
+// Learning center (editor 2026-11-27): which agent learns from a link/screenshot — Finance_Repo .claude/commands/study.md
+// routes on learn_for. First option = let the AI decide (the studier reads it and picks the agents it teaches best).
+const LEARN = [['auto', 'Let the AI decide (picks the right agents)'],
+  ['poster', 'Poster artist — covers, posters, illustration style'], ['carousel', 'Carousel builder — slide formats & layouts'],
+  ['color', 'Colorist — palette, colour & grade'], ['script', 'Storyteller — script, hooks in words, story'],
+  ['hook', 'Hook director — the visual hook, opening seconds'], ['second', 'Hook director — second frames after the hook'],
+  ['explainer', 'Explainer director — charts & explainer scenes'], ['setpiece', 'Set-piece director — big bespoke animations'],
+  ['motion', 'Motion design — kinetic type, 3D, effects'], ['broll', 'B-roll artist — cinematic B-roll & metaphors'],
+  ['pacing', 'Pacer — rhythm & timing'], ['transitions', 'Transitioner — transitions & easing']];
 const learnSelect = (val, attrs = '') => `<select class="learn" ${attrs}>${LEARN.map(([v, l]) => `<option value="${v}"${v === (val || 'auto') ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
-const LEARN_NAME = Object.fromEntries(LEARN.map(([v, l]) => [v, l.split(' —')[0].split(' (')[0]]));
+const LEARN_NAME = Object.fromEntries(LEARN.map(([v, l]) => [v, v === 'auto' ? 'AI decides' : v === 'second' ? 'Hook director (second frames)' : l.split(' —')[0]]));
 let links = []; // [{url, note, learn}]
 function parseLinks() {
   const urls = [...new Set(($('links').value.match(/https?:\/\/[^\s<>"']+/g) || []).map(u => u.replace(/[),.]+$/, '')))];
@@ -667,11 +671,11 @@ function parseLinks() {
   links = urls.filter(srcOf).map(url => ({ url, note: (old[url] || {}).note || '', learn: (old[url] || {}).learn || 'auto' }));
   $('linkCards').innerHTML = links.map((l, i) => `<div class="link"><div class="u"><span class="src">${srcOf(l.url)}</span>${esc(l.url)}</div>
     <input data-i="${i}" placeholder="what I like: …" value="${esc(l.note)}">
-    <label style="margin:10px 0 4px">Who learns from this?</label>${learnSelect(l.learn, `data-li="${i}"`)}</div>`).join('');
+    <label style="margin:10px 0 4px">Which agent learns from this?</label>${learnSelect(l.learn, `data-li="${i}"`)}</div>`).join('');
   $('linkCards').querySelectorAll('input').forEach(inp => inp.oninput = () => links[inp.dataset.i].note = inp.value);
   $('linkCards').querySelectorAll('select[data-li]').forEach(sel => sel.onchange = () => links[sel.dataset.li].learn = sel.value);
   $('sendLinks').disabled = !links.length;
-  $('sendLinks').textContent = links.length > 1 ? `Send ${links.length} links to studio` : 'Send to studio';
+  $('sendLinks').textContent = links.length > 1 ? `Send ${links.length} links to learn` : 'Send to learn';
 }
 $('links').oninput = parseLinks;
 $('sendLinks').onclick = async () => {
@@ -1394,8 +1398,8 @@ async function loadPlan() {
       const lastRun = paths.filter(p => new RegExp(`^studio/schedule/runs/[^/]+-${id}\\.json$`).test(p)).sort().pop();
       const lr = lastRun ? await jsonAt(lastRun) : null;
       if (!run) { $(R.hint).textContent = 'Not set up on this branch yet.'; $(R.btn).disabled = true; $(R.btn).textContent = '—'; continue }
-      if (!runBusy[id] && (tapAt[id] || 0) < t0) setRunUI(id, run.enabled !== false, run);
-      if (lr) $(R.hint).innerHTML += ` · last run ${esc(fmtDate(lr.date))}: ${esc(lr.status)}`;
+      runCfg[id] = run; lastRunOf[id] = lr;                  // the hint is rebuilt whole: "+=" used to repeat "last run" on every refresh
+      if (!runBusy[id] && (tapAt[id] || 0) < t0) setRunUI(id, run.enabled !== false, run); else drawRunHint(id);
     }
     loadDeepDives(paths, rec).catch(e => msg('ddMidMsg', 'err', esc(e.message)));
     // artwork: shelf (newest 40) + uploads the Action hasn't filed yet
@@ -1419,10 +1423,17 @@ async function loadPlan() {
   if (planAgain) { planAgain = false; loadPlan() }
 }
 
-let runOn = {}, tapAt = {};                                      // id → enabled, as last read or set
+let runOn = {}, tapAt = {}, runCfg = {}, lastRunOf = {};      // id → enabled, as last read or set; recurring.json entry; last run
+const runAt = id => (runCfg[id] && runCfg[id].at) || (id === 'premarket' ? '07:00' : '15:20');   // recurring.json is the truth
+const clock = hm => { const [h, m] = hm.split(':').map(Number); return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}` };
+function drawRunHint(id) {
+  const R = RUNS[id], on = runOn[id], lr = lastRunOf[id];
+  $(R.hint).innerHTML = `<span class="pill ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span> Mon–Fri ${esc(clock(runAt(id)))} IST`
+    + (lr ? ` · last run ${esc(fmtDate(lr.date))}: ${esc(lr.status)}` : '');
+}
 function setRunUI(id, on, run) {
-  const R = RUNS[id]; runOn[id] = on;
-  $(R.hint).innerHTML = `<span class="pill ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span> Mon–Fri ${esc((run && run.at) || (id === 'premarket' ? '07:45' : '17:45'))} IST`;
+  const R = RUNS[id]; runOn[id] = on; if (run) runCfg[id] = run;
+  drawRunHint(id);
   $(R.btn).textContent = on ? 'Turn off' : 'Turn on'; $(R.btn).disabled = !!runBusy[id];
 }
 async function toggleRun(id) {
@@ -1436,49 +1447,11 @@ async function toggleRun(id) {
       const j = JSON.parse(utf8b64(r.content)); (j.runs || []).forEach(x => { if (x.id === id) x.enabled = turnOn });
       return [{ path: 'studio/schedule/recurring.json', b64: b64utf8(JSON.stringify(j, null, 2) + '\n') }];
     });
-    msg(R.msg, 'ok', turnOn ? `On — every market day at ${id === 'premarket' ? '7:45 am' : '5:45 pm'} IST.` : `Off — no ${R.name.toLowerCase()} post until you turn it on again.`);
+    msg(R.msg, 'ok', turnOn ? `On — every market day at ${clock(runAt(id))} IST.` : `Off — no ${R.name.toLowerCase()} post until you turn it on again.`);
   } catch (e) { setRunUI(id, was); msg(R.msg, 'err', esc(e.message)) }
   runBusy[id] = false; $(R.btn).disabled = false;
 }
-// Skip a day (editor 2026-11-27: "a button to stop auto-scheduling of 4 posts in case I don't want to post tomorrow"):
-// studio/schedule/pause.json {skip_dates: [YYYY-MM-DD]} — engine/schedule.py runs none of the recurring posts on those days.
-function nextMarketDay() {
-  for (let i = 1; i < 15; i++) { const d = istDay(i), wd = new Date(d + 'T00:00:00Z').getUTCDay();
-    if (wd && wd < 6 && !holidays.includes(d)) return d }
-}
-function drawSkip() {
-  const nd = nextMarketDay(), today = istDay();
-  skipDates = skipDates.filter(d => d >= today).sort();
-  $('skipList').innerHTML = skipDates.length ? skipDates.map(d => `<span class="pill off" style="margin:0 6px 6px 0">${esc(fmtDate(d))} <button type="button" data-unskip="${d}" aria-label="Post on ${esc(fmtDate(d))} again" style="border:0;background:none;color:inherit;font-weight:700;padding:0 0 0 4px">×</button></span>`).join('') : '<span class="pill on">Posting every market day</span>';
-  const b = $('skipNext');
-  if (nd) { const on = skipDates.includes(nd); b.textContent = on ? `Post on ${fmtDate(nd)} again` : `Skip ${fmtDate(nd)} (next market day)`; b.dataset.d = nd; b.dataset.on = on ? '1' : '' }
-  b.disabled = skipBusy || !nd;
-}
-async function loadSkip() {
-  try { holidays = Object.entries(await jsonAt('studio/schedule/market-holidays.json') || {}).filter(([k]) => /^\d{4}$/.test(k)).flatMap(([, v]) => v) } catch {}
-  try { const j = await jsonAt('studio/schedule/pause.json'); if (!skipBusy) skipDates = (j && j.skip_dates) || [] } catch { skipDates = [] }
-  drawSkip();
-}
-async function setSkip(d, on) {
-  if (skipBusy || !/^\d{4}-\d{2}-\d{2}$/.test(d || '')) return;
-  if (on && d < istDay()) return msg('skipMsg', 'err', 'Pick today or a later date.');
-  skipBusy = true; const was = skipDates.slice();
-  skipDates = on ? [...new Set([...skipDates, d])] : skipDates.filter(x => x !== d); drawSkip(); clearMsg('skipMsg');
-  try {
-    const { repo } = cfg();
-    await commitFiles([], `rm-inbox: ${on ? 'skip' : 'post on'} ${d}`, null, async head => {
-      let j = { about: 'Days with no automatic posts (pre, post, deep dives). RM Inbox → Pre & Post → Skip a day.', skip_dates: [] };
-      try { j = JSON.parse(utf8b64((await api(`/repos/${repo}/contents/studio/schedule/pause.json?ref=${head}`)).content)) } catch (e) { if (e.status !== 404) throw e }
-      const s = new Set((j.skip_dates || []).filter(x => x >= istDay())); on ? s.add(d) : s.delete(d); j.skip_dates = [...s].sort();
-      return [{ path: 'studio/schedule/pause.json', b64: b64utf8(JSON.stringify(j, null, 2) + '\n') }];
-    });
-    msg('skipMsg', 'ok', on ? `No automatic posts on ${fmtDate(d)}. Build now still works.` : `${fmtDate(d)} posts as usual.`);
-  } catch (e) { skipDates = was; msg('skipMsg', 'err', esc(e.message)) }
-  skipBusy = false; drawSkip();
-}
-$('skipNext').onclick = () => setSkip($('skipNext').dataset.d, !$('skipNext').dataset.on);
-$('skipGo').onclick = () => setSkip($('skipDate').value, true);
-$('skipList').addEventListener('click', e => { const b = e.target.closest('[data-unskip]'); if (b) setSkip(b.dataset.unskip, false) });
+// No "Skip a day" (removed, editor 2026-11-27): each of the four posts is switched off on its own card.
 $('pmToggle').onclick = () => toggleRun('premarket');
 $('poToggle').onclick = () => toggleRun('postmarket');
 // the artwork a pre/post run will take: art.json use_on "next" + slot (or dated today) — one per post
@@ -1533,9 +1506,11 @@ async function buildRun(slot, btn) {       // editor 2026-11-27: build any of th
   if (link && !/^https?:\/\/\S+\.\S+/.test(link)) return msg(R.msg, 'err', 'That link doesn’t look like a web address.');
   btn.disabled = true; const t0 = btn.textContent; btn.textContent = 'Sending…';
   try {
-    const slug = `${slot}-${istDay()}`;
+    const slug = DD[slot] ? ddSlug(slot) : `${slot}-${istDay()}`;     // deep dives never overwrite the day's first one
     const brief = [link && `Editor's story link: ${link}`, note].filter(Boolean).join('\n');
-    await commitFiles([buildFile(slug, slot, brief, link ? { link } : {})], `rm-inbox: build ${slug} now${link ? ' (with a link)' : ''}`);
+    const bf = buildFile(slug, slot, brief, link ? { link } : {});
+    await commitFiles([bf], `rm-inbox: build ${slug} now${link ? ' (with a link)' : ''}`);
+    planPaths = (planPaths || []).concat(bf.path);                  // a second tap before the next refresh gets its own slug
     msg(R.msg, 'ok', 'Building on GitHub now (about 30–60 minutes) — follow it in the bar at the top; it lands in <b>Studio</b>.'); pollLive(2500);
     if ($(el + 'Link')) $(el + 'Link').value = ''; if ($(el + 'BNote')) $(el + 'BNote').value = '';
   } catch (e) { msg(R.msg, 'err', esc(e.message)) }
@@ -1580,6 +1555,13 @@ function drawDeepDive(ed) {
       <div class="row2"><button class="btn ${c.id === top ? 'primary' : 'ghost'} small" type="button" data-ddbuild="${ed}:${esc(c.id)}">Build this</button></div></div>`).join('')
     + `<div class="row2" style="margin-top:6px"><button class="btn ghost small" type="button" data-ddskip="${ed}">Skip today</button></div>`;
 }
+// a second deep dive that day gets -2, -3 … and never replaces the first (a build already requested counts too)
+function ddSlug(ed) {
+  const taken = s => (planPaths || []).some(p => p === `studio/carousels/${s}/carousel.json` || new RegExp(`^studio/schedule/build/build-\\d{8}-\\d{6}-${s}\\.json$`).test(p));
+  let slug = `${ed}-${istDay()}`;
+  for (let k = 2; taken(slug); k++) slug = `${ed}-${istDay()}-${k}`;
+  return slug;
+}
 async function ddChoose(ed, cid) {                   // cid '' = skip today
   if (ddBusy[ed]) return;
   const D = DD[ed], m = ddMenu[ed], path = `news/deepdive/${istDay()}/${ed}.json`, note = (($(D.el + 'Note') || {}).value || '').trim();
@@ -1587,8 +1569,7 @@ async function ddChoose(ed, cid) {                   // cid '' = skip today
   ddBusy[ed] = true; msg(D.el + 'Msg', 'info', 'Saving…');
   try {
     const { repo } = cfg(); let gone = false;
-    let slug = `${ed}-${istDay()}`;                       // a second deep dive that day gets -2, -3 … and never replaces the first
-    for (let k = 2; (planPaths || []).includes(`studio/carousels/${slug}/carousel.json`); k++) slug = `${ed}-${istDay()}-${k}`;
+    const slug = ddSlug(ed);
     await commitFiles(cid ? [buildFile(slug, ed, note, { prefer: '' })] : [], `rm-inbox: ${ed} deep dive — ${cid ? 'build ' + (c.subject || cid) : 'skip today'}`, null, async head => {
       const r = await api(`/repos/${repo}/contents/${path}?ref=${head}`);
       const j = JSON.parse(utf8b64(r.content));

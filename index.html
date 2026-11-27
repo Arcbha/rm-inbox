@@ -348,7 +348,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <button role="tab" data-tab="add" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z M8 9h8 M8 13h8 M8 17h5"/></svg><span>Newsroom</span></button>
       <button role="tab" data-tab="saved" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-4-5 4z"/></svg><span>Artwork</span></button>
       <button role="tab" data-tab="studio" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z M10 9l5 3-5 3z"/></svg><span>Studio</span></button>
-      <button role="tab" data-tab="learn" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5V19c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z M12 6v13.5"/></svg><span>References</span></button>
+      <button role="tab" data-tab="learn" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5V19c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z M12 6v13.5"/></svg><span>Learning</span></button>
       <button role="tab" data-tab="more" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01 M12 12h.01 M19 12h.01"/></svg><span>More</span></button>
     </nav>
 
@@ -359,13 +359,6 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
           <button class="btn ghost small" id="usageGo" type="button">Refresh</button></div>
         <div id="usageList"><div class="empty">Loading…</div></div>
         <div class="msg" id="usageMsg"></div>
-      </div>
-      <div class="card" id="skipCard">
-        <div class="switch"><div><h2>Skip a day</h2><p class="hint" id="skipHint" style="margin:0">No automatic posts that day — pre-market, both deep dives, post-market.</p></div></div>
-        <div id="skipList" style="margin:8px 0"></div>
-        <button class="btn ghost" id="skipNext" type="button" disabled>Skip next market day</button>
-        <div style="display:flex;gap:8px;margin-top:8px"><input type="date" id="skipDate" style="flex:1"><button class="btn ghost small" id="skipGo" type="button">Skip this date</button></div>
-        <div class="msg" id="skipMsg"></div>
       </div>
       <div class="card">
         <h2>Market now</h2>
@@ -518,9 +511,9 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="reels" id="reelGrid"></div>
     </section>
 
-    <!-- References: learning material for the agents (studied at the next scheduled run) -->
+    <!-- Learning center (editor 2026-11-27, was "References"): links or screenshots for the AI agents to learn from -->
     <section data-pane="learn" class="hide">
-      <p class="hint" style="margin:0 4px 12px">Reels, carousels, screenshots, videos, X posts — the studio studies new ones at its next run (every hour at :45).</p>
+      <p class="hint" style="margin:0 4px 12px">Send links or screenshots for the AI agents to learn from — reels, carousels, posters, videos, X posts. Pick which agent learns from each one, or let the AI decide. New ones are studied at the next run (every hour at :45).</p>
       <div class="card">
         <h2>Links</h2>
         <p class="hint">X, Instagram or YouTube — reels, videos, and carousel or photo posts. One per line. Add a note on what to learn from each. Fastest: use your phone’s <b>Share</b> button → Rupee Mechanics. If Instagram blocks a link, screenshot the slides and use “Or upload files”.</p>
@@ -531,7 +524,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <input id="tags" placeholder="camera push, product, chart">
         <div class="tagrow quick" data-for="tags"></div>
         <div style="height:14px"></div>
-        <button class="btn primary" id="sendLinks" disabled>Send to studio</button>
+        <button class="btn primary" id="sendLinks" disabled>Send to learn</button>
         <div class="bar" id="linksBar"><i></i></div>
         <div class="msg" id="linksMsg"></div>
       </div>
@@ -547,7 +540,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <label for="vidTags">Tags</label>
         <input id="vidTags" placeholder="optional">
         <div class="tagrow quick" data-for="vidTags"></div>
-        <label for="upLearn">Who learns from this?</label>
+        <label for="upLearn">Which agent learns from this?</label>
         <div id="upLearnWrap"></div>
         <div style="height:14px"></div>
         <button class="btn primary" id="sendVid" disabled>Upload</button>
@@ -558,10 +551,10 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
 
     <!-- More: the reference library, what you sent, studio status -->
     <section data-pane="more" class="hide">
-      <div class="seg" data-seg="more" data-noswipe><button data-s="library">Library</button><button data-s="mine">My references</button><button data-s="status">Status</button><button data-s="rules">Rulebook</button></div>
+      <div class="seg" data-seg="more" data-noswipe><button data-s="library">Library</button><button data-s="mine">Sent to learn</button><button data-s="status">Status</button><button data-s="rules">Rulebook</button></div>
       <div data-sub="library" class="hide">
       <div class="card">
-        <div class="row" style="justify-content:space-between"><div><h2>Reference library</h2><p class="hint" id="libCount" style="margin:0">—</p></div>
+        <div class="row" style="justify-content:space-between"><div><h2>Learning library</h2><p class="hint" id="libCount" style="margin:0">—</p></div>
           <button class="btn ghost small" id="libAdd">+ Add</button></div>
         <div style="height:12px"></div>
         <div class="libbar"><input id="libQ" placeholder="Search notes, tags, techniques" autocapitalize="off"></div>
@@ -572,8 +565,8 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="lib" id="libGrid"></div>
       </div>
       <div data-sub="mine" class="hide">
-      <div class="card sec"><h3><span>Your references</span><span id="myRefsCount"></span></h3>
-        <p class="hint" style="margin:0 4px 6px">Everything you've sent, newest first. Tap one to open the post. Change "Who learns" on any one to send it to a different agent. Swipe left or right to change tabs. The library widens the studio's horizon; it never limits its creativity.</p>
+      <div class="card sec"><h3><span>Sent to learn</span><span id="myRefsCount"></span></h3>
+        <p class="hint" style="margin:0 4px 6px">Everything you've sent, newest first. Tap one to open the post. Change "Who learns" on any one to send it to a different agent, or back to "Let the AI decide". Swipe left or right to change tabs. The library widens the studio's horizon; it never limits its creativity.</p>
         <div class="msg" id="myRefsMsg"></div><div id="myRefs"><div class="empty">Loading…</div></div></div>
       </div>
       <div data-sub="status" class="hide">
