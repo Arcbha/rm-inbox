@@ -12,6 +12,10 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(k, v) } catch {} },
   del: k => { try { localStorage.removeItem(k) } catch {} },
 };
+// Claude accounts (editor 2026-11-27): main token = Account Google (first), B = Account Outlook
+const ACCT = { main: 'Account Google', B: 'Account Outlook', A: 'Account A' };     // editor: Google first
+const ACCT_ORDER = ['main', 'B', 'A'];
+let skipDates = [], holidays = [], skipBusy = false;     // Skip a day (studio/schedule/pause.json)
 const cfg = () => ({ tok: store.get(K.tok), repo: store.get(K.repo) || 'Arcbha/Finance_Repo', branch: store.get(K.branch) || 'main' });
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const stamp = () => new Date().toISOString().replace(/[:.]/g, '-');
@@ -119,9 +123,10 @@ const KIND_WORD = { menu: 'Deep-dive menu', midday: 'Midday deep dive', evening:
 let artStatusAt = 0;
 function drawArtPrompt(st) {                       // editor 2026-11-27: "once artworks are all exhausted it can give a prompt at the header"
   const el = $('artPrompt'), off = (() => { try { return localStorage.getItem('rm.artPromptOff') === new Date().toDateString() } catch { return false } })();
-  const show = st && st.exhausted && !off;
+  const show = st && (st.exhausted || st.missed) && !off;     // editor 2026-11-27: bookmarks are never re-used; say when none are left
   el.classList.toggle('hide', !show);
-  if (show) el.innerHTML = `<span>${st.pictures ? 'All your artwork has been used — posts are re-using older pictures.' : 'No artwork saved yet for the pre/post-market posts.'} <b>Save more</b></span><button type="button" aria-label="Hide for today">×</button>`;
+  const miss = st && st.missed ? `The ${st.missed.slot === 'postmarket' ? 'post-market' : st.missed.slot === 'premarket' ? 'pre-market' : esc(st.missed.slot)} post on ${esc(fmtDate(st.missed.date))} had no unused bookmark, so its cover was drawn in code. ` : '';
+  if (show) el.innerHTML = `<span>${miss}${st.pictures ? 'Every bookmark has been used — the next posts will have no artwork.' : 'No bookmarks saved yet for the posts.'} <b>Add bookmarks</b></span><button type="button" aria-label="Hide for today">×</button>`;
 }
 let liveTimer = null, liveOpen = false, liveReq = {}, liveJobs = {}, liveBusy = false, chatJobs = [], chatScan = 0;
 // Questions from chat sessions (editor 2026-11-26: "can a prompt come in the app to go and check the Claude app"): a chat run
@@ -219,7 +224,7 @@ function drawLive(rows, blocked, lv) {
   for (const r of run) {
     const L = r.L || {};
     out.push(row('run', title(r),
-      `${L.agent ? `<b>${esc(L.agent)}</b> · ` : ''}${esc(L.stage || 'starting')}${L.progress ? ' ' + esc(L.progress) : ''} · ${dur(mins(L.started || r.m.added))}${L.account ? ` · account ${esc(L.account)}` : ''}${mins(lv.updated) > 3 ? ` · no update for ${dur(mins(lv.updated))}` : ''}`,
+      `${L.agent ? `<b>${esc(L.agent)}</b> · ` : ''}${esc(L.stage || 'starting')}${L.progress ? ' ' + esc(L.progress) : ''} · ${dur(mins(L.started || r.m.added))}${L.account ? ` · ${esc(ACCT[L.account] || 'account ' + L.account)}` : ''}${mins(lv.updated) > 3 ? ` · no update for ${dur(mins(lv.updated))}` : ''}`,
       (L.trail || []).length ? `<div class="trail">${L.trail.slice(-5).map((t, i, a) => i === a.length - 1 ? `<b>${esc(t)}</b>` : esc(t)).join(' → ')}</div>` : ''));
   }
   for (const r of wait) out.push(row('wait', title(r), 'waiting for GitHub to start it'));
@@ -476,7 +481,6 @@ const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes
 // ---------- Claude usage left (editor 2026-11-27: "I want to know usage left only … and when it refreshes back") ----------
 // Finance_Repo's usage Action (every 3 h, after every build, and on Refresh) writes usage.json on the `usage` branch:
 // per account the 5-hour window and the weekly limit as % left + reset time. Plans have no token count, only these.
-const ACCT = { A: 'Account A', B: 'Account B', main: 'Main token' };
 const ist = iso => { const d = new Date(iso), t = d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' });
   const day = d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }), today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
   return day === today ? t : `${day}, ${t}` };
@@ -492,7 +496,7 @@ async function loadUsage(force) {
   const bar = (name, w) => { if (!w || w.left == null) return '';
     const c = w.left <= 15 ? 'low' : w.left <= 40 ? 'mid' : '';
     return `<div class="ub"><span>${name}</span><span class="bar"><i class="${c}" style="width:${w.left}%"></i></span><b>${w.left}% left</b>${w.resets_at ? `<span></span><span class="r">refills ${inT(w.resets_at)} · ${ist(w.resets_at)}</span>` : ''}</div>` };
-  $('usageList').innerHTML = (u.accounts || []).map(a => `<div class="ua"><div class="h"><span>${esc(ACCT[a.label] || a.label)}</span>${a.ok ? '' : '<span style="color:var(--loss)">couldn\'t read</span>'}</div>${a.ok
+  $('usageList').innerHTML = (u.accounts || []).slice().sort((x, y) => ACCT_ORDER.indexOf(x.label) - ACCT_ORDER.indexOf(y.label)).map(a => `<div class="ua"><div class="h"><span>${esc(ACCT[a.label] || a.label)}</span>${a.ok ? '' : '<span style="color:var(--loss)">couldn\'t read</span>'}</div>${a.ok
     ? bar('5-hour', a.session) + bar('Weekly', a.weekly)
     : `<div class="ub"><span></span><span class="r" style="grid-column:1/4">${a.limited_until ? `At its limit — free again ${inT(a.limited_until)} · ${ist(a.limited_until)}` : 'Check the token in GitHub Secrets.'}</span></div>`}</div>`).join('') || '<div class="empty">No Claude token secrets found.</div>';
 }
@@ -515,7 +519,7 @@ function showTab(t) {
   store.set(K.tab, t);
   $('pageTitle').textContent = TITLE[t]; $('pageTitle').classList.remove('hide');
   clearInterval(statusTimer);
-  if (t === 'today') { loadPlan(); loadUsage() }
+  if (t === 'today') { loadPlan(); loadUsage(); loadSkip() }
   if (t === 'saved') loadBookmarks();
   if (t === 'studio') loadReels();
   if (SUBS[t]) showSub(t, subOf(t));
@@ -1421,6 +1425,45 @@ async function toggleRun(id) {
   } catch (e) { setRunUI(id, was); msg(R.msg, 'err', esc(e.message)) }
   runBusy[id] = false; $(R.btn).disabled = false;
 }
+// Skip a day (editor 2026-11-27: "a button to stop auto-scheduling of 4 posts in case I don't want to post tomorrow"):
+// studio/schedule/pause.json {skip_dates: [YYYY-MM-DD]} — engine/schedule.py runs none of the recurring posts on those days.
+function nextMarketDay() {
+  for (let i = 1; i < 15; i++) { const d = istDay(i), wd = new Date(d + 'T00:00:00Z').getUTCDay();
+    if (wd && wd < 6 && !holidays.includes(d)) return d }
+}
+function drawSkip() {
+  const nd = nextMarketDay(), today = istDay();
+  skipDates = skipDates.filter(d => d >= today).sort();
+  $('skipList').innerHTML = skipDates.length ? skipDates.map(d => `<span class="pill off" style="margin:0 6px 6px 0">${esc(fmtDate(d))} <button type="button" data-unskip="${d}" aria-label="Post on ${esc(fmtDate(d))} again" style="border:0;background:none;color:inherit;font-weight:700;padding:0 0 0 4px">×</button></span>`).join('') : '<span class="pill on">Posting every market day</span>';
+  const b = $('skipNext');
+  if (nd) { const on = skipDates.includes(nd); b.textContent = on ? `Post on ${fmtDate(nd)} again` : `Skip ${fmtDate(nd)} (next market day)`; b.dataset.d = nd; b.dataset.on = on ? '1' : '' }
+  b.disabled = skipBusy || !nd;
+}
+async function loadSkip() {
+  try { holidays = Object.entries(await jsonAt('studio/schedule/market-holidays.json') || {}).filter(([k]) => /^\d{4}$/.test(k)).flatMap(([, v]) => v) } catch {}
+  try { const j = await jsonAt('studio/schedule/pause.json'); if (!skipBusy) skipDates = (j && j.skip_dates) || [] } catch { skipDates = [] }
+  drawSkip();
+}
+async function setSkip(d, on) {
+  if (skipBusy || !/^\d{4}-\d{2}-\d{2}$/.test(d || '')) return;
+  if (on && d < istDay()) return msg('skipMsg', 'err', 'Pick today or a later date.');
+  skipBusy = true; const was = skipDates.slice();
+  skipDates = on ? [...new Set([...skipDates, d])] : skipDates.filter(x => x !== d); drawSkip(); clearMsg('skipMsg');
+  try {
+    const { repo } = cfg();
+    await commitFiles([], `rm-inbox: ${on ? 'skip' : 'post on'} ${d}`, null, async head => {
+      let j = { about: 'Days with no automatic posts (pre, post, deep dives). RM Inbox → Pre & Post → Skip a day.', skip_dates: [] };
+      try { j = JSON.parse(utf8b64((await api(`/repos/${repo}/contents/studio/schedule/pause.json?ref=${head}`)).content)) } catch (e) { if (e.status !== 404) throw e }
+      const s = new Set((j.skip_dates || []).filter(x => x >= istDay())); on ? s.add(d) : s.delete(d); j.skip_dates = [...s].sort();
+      return [{ path: 'studio/schedule/pause.json', b64: b64utf8(JSON.stringify(j, null, 2) + '\n') }];
+    });
+    msg('skipMsg', 'ok', on ? `No automatic posts on ${fmtDate(d)}. Build now still works.` : `${fmtDate(d)} posts as usual.`);
+  } catch (e) { skipDates = was; msg('skipMsg', 'err', esc(e.message)) }
+  skipBusy = false; drawSkip();
+}
+$('skipNext').onclick = () => setSkip($('skipNext').dataset.d, !$('skipNext').dataset.on);
+$('skipGo').onclick = () => setSkip($('skipDate').value, true);
+$('skipList').addEventListener('click', e => { const b = e.target.closest('[data-unskip]'); if (b) setSkip(b.dataset.unskip, false) });
 $('pmToggle').onclick = () => toggleRun('premarket');
 $('poToggle').onclick = () => toggleRun('postmarket');
 // the artwork a pre/post run will take: art.json use_on "next" + slot (or dated today) — one per post
