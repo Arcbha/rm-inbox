@@ -1836,6 +1836,7 @@ function drawUpcoming(items, queued, builds = []) {
 // No Action processes them and no agent reads them (Finance_Repo bookmarks/README.md).
 let bmShots = [], bms = [], bmPaths = [], bmShown = 60, bmSrc = 'unused', bmThumb = {}, bmLoading = false;
 const BM_SRC = [['unused', 'Not used'], ['used', 'Used']];      // editor 2026-11-27: only two sections; screenshots and uploads are the same thing
+let bmSel = null, bmEdit = null;   // select mode: Set of bookmark ids (bulk delete, editor 2026-11-28) · id whose note is being edited
 let bmUsed = {}, bmArts = {};   // bookmark id → the post that used it · bookmark id → its studio/artwork art.json files (to mark it not used again)
 const bmSource = u => u ? srcOf(u) || 'web' : 'shot';
 const ytId = u => { const m = (u || '').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/); return m ? m[1] : '' };
@@ -1915,9 +1916,13 @@ function drawBookmarks() {
   $('bmGrid').innerHTML = shown.map(b => {
     const host = (() => { try { return new URL(b.url).hostname.replace(/^www\./, '') } catch { return '' } })();
     const day = new Date(b.added).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-    return `<div class="bm"><div class="bp" data-open="${esc(b.id)}"><span class="big">${esc(NAME[b.source] || 'Link')}</span>${isUsed(b) ? `<span class="used">USED · ${esc(String(bmUsed[b.id]).slice(0, 22))}</span>` : ''}${(b.images || []).length > 1 ? `<span class="cnt">${b.images.length}</span>` : ''}</div>
-      <div class="bb">${b.note ? `<div class="nt">${esc(b.note)}</div>` : ''}<div class="dt">${esc(day)}${host ? ' · ' + esc(host) : ''}</div>
-      <div class="ba">${isUsed(b) && !String(bmUsed[b.id]).startsWith('in progress') ? `<button class="again" data-again="${esc(b.id)}">Use again</button>` : b.url ? `<a href="${esc(b.url)}" target="_blank" rel="noopener">Open ↗</a>` : '<span></span>'}<button data-del="${esc(b.id)}">Delete</button></div></div></div>`;
+    const on = bmSel && bmSel.has(b.id);
+    const noteHtml = bmSel ? (b.note ? `<div class="nt">${esc(b.note)}</div>` : '')
+      : bmEdit === b.id ? `<textarea data-note="${esc(b.id)}" placeholder="How you'd use it — Claude listens, then decides">${esc(b.note || '')}</textarea><div class="ne"><button data-ncancel>Cancel</button><button data-nsave="${esc(b.id)}">Save</button></div>`
+      : b.note ? `<div class="nt idea" data-nedit="${esc(b.id)}" title="Edit your idea">${esc(b.note)} ✎</div>` : `<div class="nt add" data-nedit="${esc(b.id)}">＋ Your idea for it</div>`;
+    return `<div class="bm${on ? ' on' : ''}"><div class="bp" data-open="${esc(b.id)}">${bmSel ? `<span class="ck">${on ? '✓' : ''}</span>` : ''}<span class="big">${esc(NAME[b.source] || 'Link')}</span>${isUsed(b) ? `<span class="used">USED · ${esc(String(bmUsed[b.id]).slice(0, 22))}</span>` : ''}${(b.images || []).length > 1 ? `<span class="cnt">${b.images.length}</span>` : ''}</div>
+      <div class="bb">${noteHtml}<div class="dt">${esc(day)}${host ? ' · ' + esc(host) : ''}</div>
+      <div class="ba">${isUsed(b) && !String(bmUsed[b.id]).startsWith('in progress') ? `<button class="again" data-again="${esc(b.id)}">Use again</button>` : b.url ? `<a href="${esc(b.url)}" target="_blank" rel="noopener">Open ↗</a>` : '<span></span>'}${bmSel ? '' : `<button data-del="${esc(b.id)}">Delete</button>`}</div></div></div>`;
   }).join('') || `<div class="empty" style="grid-column:1/-1">${bms.length ? 'Nothing matches.' : 'Nothing saved yet — save one above.'}</div>`;
   for (const b of shown) {
     const el = $('bmGrid').querySelector(`[data-open="${CSS.escape(b.id)}"]`); if (!el) continue;
@@ -1925,7 +1930,20 @@ function drawBookmarks() {
     if (bmThumb[b.id]) set(bmThumb[b.id]);
     else if ((b.images || []).length) rawBlobUrl(`bookmarks/${b.id}/${b.images[0]}`).then(u => { if (u) { bmThumb[b.id] = u; set(u) } });
     else if (ytId(b.url)) { bmThumb[b.id] = `https://i.ytimg.com/vi/${ytId(b.url)}/hqdefault.jpg`; set(bmThumb[b.id]) }
-    el.onclick = () => (b.images || []).length ? openLightbox(b) : b.url && window.open(b.url, '_blank', 'noopener');
+    el.onclick = () => bmSel ? (bmSel.has(b.id) ? bmSel.delete(b.id) : bmSel.add(b.id), drawBookmarks())
+      : (b.images || []).length ? openLightbox(b) : b.url && window.open(b.url, '_blank', 'noopener');
+  }
+  $('bmGrid').querySelectorAll('[data-nedit]').forEach(el => el.onclick = () => { bmEdit = el.dataset.nedit; drawBookmarks(); const t = $('bmGrid').querySelector('textarea[data-note]'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length) } });
+  $('bmGrid').querySelectorAll('[data-ncancel]').forEach(el => el.onclick = () => { bmEdit = null; drawBookmarks() });
+  $('bmGrid').querySelectorAll('[data-nsave]').forEach(el => el.onclick = () => saveBmNote(el, el.dataset.nsave, $('bmGrid').querySelector('textarea[data-note]').value.trim()));
+  $('bmSelect').textContent = bmSel ? 'Cancel' : 'Select';
+  $('bmSelBar').classList.toggle('hide', !bmSel); $('bmGrid').classList.toggle('selmode', !!bmSel);
+  if (bmSel) {
+    for (const id of [...bmSel]) if (!shown.some(b => b.id === id)) bmSel.delete(id);   // only what this section shows
+    $('bmSelN').textContent = `${bmSel.size} selected`;
+    $('bmSelDel').textContent = bmSel.size ? `Delete ${bmSel.size}` : 'Delete'; $('bmSelDel').disabled = !bmSel.size;
+    $('bmSelAll').textContent = shown.length && shown.every(b => bmSel.has(b.id)) ? 'None' : 'All';
+    $('bmSelAll').onclick = () => { if (shown.every(b => bmSel.has(b.id))) bmSel.clear(); else shown.forEach(b => bmSel.add(b.id)); drawBookmarks() };
   }
   $('bmGrid').querySelectorAll('[data-del]').forEach(btn => btn.onclick = () => deleteBm(btn, btn.dataset.del));
   $('bmGrid').querySelectorAll('[data-again]').forEach(btn => btn.onclick = () => useAgain(btn, btn.dataset.again));
@@ -1969,6 +1987,39 @@ async function deleteBm(btn, id) {
   } catch (e) { msg('bmListMsg', 'err', esc(e.message)); btn.disabled = false }
 }
 $('bmMore').onclick = () => { bmShown += 60; loadBookmarks(true) };
+// Bulk delete (editor 2026-11-28: "a checkbox kind of setup for bulk deleting together"): Select → tick cards → Delete n, one commit.
+$('bmSelect').onclick = () => { bmSel = bmSel ? null : new Set(); bmEdit = null; clearMsg('bmListMsg'); drawBookmarks() };
+$('bmSelDone').onclick = () => { bmSel = null; drawBookmarks() };
+$('bmSelDel').onclick = async () => {
+  const btn = $('bmSelDel'), ids = [...(bmSel || [])]; if (!ids.length) return;
+  if (!armTap(btn, `Delete ${ids.length}? Tap again`)) return;
+  btn.disabled = true; btn.textContent = 'Deleting…';
+  try {
+    const { repo, branch } = cfg();
+    const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+    const pre = ids.map(id => `bookmarks/${id}/`);
+    const files = tree.tree.filter(t => t.type === 'blob' && pre.some(p => t.path.startsWith(p))).map(t => ({ path: t.path, del: true }));
+    if (files.length) await commitFiles(files, `rm-inbox: delete ${ids.length} bookmark${ids.length > 1 ? 's' : ''}`);
+    const gone = new Set(ids);
+    bms = bms.filter(b => !gone.has(b.id)); bmPaths = bmPaths.filter(p => !gone.has(p.split('/')[1]));
+    bmSel = null; drawBookmarks(); msg('bmListMsg', 'ok', `Deleted ${ids.length} bookmark${ids.length > 1 ? 's' : ''}.`);
+  } catch (e) { msg('bmListMsg', 'err', esc(e.message)); btn.disabled = false; drawBookmarks() }
+};
+// Your idea for a bookmark (editor 2026-11-28): bookmark.json `note`, editable any time. The studio hears it and decides —
+// take, bend or set aside for a fresher idea (Finance_Repo COVER-PLAYBOOK §7e), never a robot executing it.
+async function saveBmNote(btn, id, note) {
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const { repo } = cfg(), p = `bookmarks/${id}/bookmark.json`;
+    await commitFiles([], `rm-inbox: bookmark ${id} idea`, null, async head => {
+      const j = JSON.parse(utf8b64((await api(`/repos/${repo}/contents/${p}?ref=${head}`)).content));
+      j.note = note; j.note_updated = new Date().toISOString();
+      return [{ path: p, b64: b64utf8(JSON.stringify(j, null, 2) + '\n') }];
+    });
+    const b = bms.find(x => x.id === id); if (b) b.note = note;
+    bmEdit = null; drawBookmarks();
+  } catch (e) { msg('bmListMsg', 'err', esc(e.message)); btn.disabled = false; btn.textContent = 'Save' }
+}
 
 // ---------- quick tags: one tap adds a tag the studio routes on (pacing → pacer agent, transitions → transitioner agent) ----------
 const QUICK = ['pacing', 'transitions', 'hook', 'color', 'typography', 'kinetic'];
