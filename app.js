@@ -3,7 +3,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const API = 'https://api.github.com';
-const APP_VERSION = '2026-11-28b';   // shown in More's footer: which build the phone is running
+const APP_VERSION = '2026-11-28c';   // shown in More's footer: which build the phone is running
 const K = { tok: 'rm.token', repo: 'rm.repo', branch: 'rm.branch', tab: 'rm.tab' };
 const MAX_VIDEO = 90 * 1024 * 1024, MAX_SIDE = 2000, JPEG_Q = 0.85;
 
@@ -446,6 +446,41 @@ function drawRules() {
   $('rulesBody').innerHTML = mdRender(rulesMd.replace(/^# .*\n|^_Generated.*_\n/gm, ''), '') || '<div class="empty">Nothing matches.</div>';
 }
 
+// ---------- Playbook (editor 2026-11-28: "Playbook can be more, make sure it comes in app for me to see") ----------
+// studio/PLAYBOOK.md in full, read live from the repo; each `## ` section expands on tap (same renderer as the Rulebook).
+let pbMd = '';
+async function loadPlaybook(force) {
+  if (pbMd && !force) return drawPlaybook();
+  try { pbMd = await fileText('studio/PLAYBOOK.md'); clearMsg('pbMsg'); drawPlaybook() }
+  catch (e) { msg('pbMsg', 'err', esc(e.message || 'Could not read the playbook.')) }
+}
+function drawPlaybook() {
+  const n = (pbMd.match(/^- [A-Z]+\d+ /gm) || []).length;
+  $('pbStamp').textContent = `${n} rules · ${pbMd.split('\n').length} lines · live from the repo`;
+  $('pbBody').innerHTML = mdRender(pbMd.replace(/^# .*\n/m, ''), '') || '<div class="empty">The playbook is empty.</div>';
+}
+$('pbReload').onclick = () => loadPlaybook(true);
+
+// ---------- Market calendar (editor 2026-11-28: "add NSE calendar") ----------
+// Today's four posts from recurring.json (the scheduler's truth) and NSE trading holidays from market-holidays.json
+// (Finance_Repo studio/schedule: dates per year as lists, names in "names"); posts skip these days by themselves.
+const CAL_RUNS = [['premarket', 'Pre-market post'], ['midday-menu', 'Midday menu'], ['midday', 'Midday deep dive'], ['postmarket', 'Post-market post'], ['evening-menu', 'Evening menu'], ['evening', 'Evening deep dive']];
+async function loadCalendar(paths, rec) {
+  const today = istDay(), wd = new Date(today + 'T12:00:00Z').getUTCDay(), weekend = wd === 0 || wd === 6;
+  const hol = paths.includes('studio/schedule/market-holidays.json') ? await jsonAt('studio/schedule/market-holidays.json') : null;
+  const names = (hol && hol.names) || {}, dates = hol ? Object.entries(hol).filter(([k, v]) => /^\d{4}$/.test(k) && Array.isArray(v)).flatMap(([, v]) => v) : [];
+  const closed = weekend || dates.includes(today);
+  $('calHint').textContent = closed ? `${fmtDate(today)} · market closed${dates.includes(today) ? ' — ' + (names[today] || 'NSE holiday') : ' (weekend)'} · no posts run` : `${fmtDate(today)} · market day · times in IST`;
+  const runs = (rec && rec.runs) || [];
+  $('calToday').innerHTML = '<div class="cal">' + CAL_RUNS.map(([id, label]) => { const r = runs.find(x => x.id === id); if (!r) return '';
+    return `<span class="t">${esc(r.at)}</span><span>${label}</span><span class="o">${r.enabled === false ? 'off' : closed ? 'skips today' : 'on'}</span>` }).join('') + '</div>';
+  const up = dates.filter(d => d >= today).sort().slice(0, 8);
+  const yr = new Date().getFullYear(), next = String(yr + 1);
+  const missing = !(hol && Array.isArray(hol[next])) ? `<p class="hint" style="margin:6px 0 0">NSE hasn't published its ${next} holidays in the studio yet (it usually does in mid-December); Claude adds them then.</p>` : '';
+  $('calHol').innerHTML = '<h3 style="margin:4px 0">NSE holidays ahead</h3>' + (up.length ? '<div class="cal">' + up.map(d =>
+    `<span class="t">${esc(fmtDate(d))}</span><span>${esc(names[d] || 'Trading holiday')}</span><span class="o">no posts</span>`).join('') + '</div>' : '<div class="empty">None left on the list.</div>') + missing;
+}
+
 // ---------- setup ----------
 function boot() {
   const c = cfg();
@@ -475,7 +510,7 @@ $('forget').onclick = () => { if (armTap($('forget'), 'Tap again to forget')) { 
 let statusTimer = null;
 const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Artwork', studio: 'Studio', learn: 'Learning center', more: 'More' };
 const OLDTAB = { refs: 'learn', news: 'add', plan: 'today', library: 'more', status: 'more' };
-const SUBS = { add: ['news', 'schedule'], more: ['library', 'mine', 'status', 'rules'] };
+const SUBS = { add: ['news', 'schedule'], more: ['library', 'mine', 'status', 'rules', 'playbook'] };
 const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes(v) ? v : SUBS[g][0] };
 // ---------- Claude usage left (editor 2026-11-27: "I want to know usage left only … and when it refreshes back") ----------
 // Finance_Repo's usage Action (every 3 h, after every build, and on Refresh) writes usage.json on the `usage` branch:
@@ -547,6 +582,7 @@ function showSub(g, s) {
   if (s === 'library') loadLibrary();
   if (s === 'mine') loadMyRefs();
   if (s === 'rules') loadRules();
+  if (s === 'playbook') loadPlaybook();
   if (s === 'status') { loadStatus(); statusTimer = setInterval(loadStatus, 15000) }
 }
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { showTab(b.dataset.tab); window.scrollTo({ top: 0 }) });
@@ -1405,6 +1441,7 @@ async function loadPlan() {
       if (!runBusy[id] && (tapAt[id] || 0) < t0) setRunUI(id, run.enabled !== false, run); else drawRunHint(id);
     }
     loadDeepDives(paths, rec).catch(e => msg('ddMidMsg', 'err', esc(e.message)));
+    loadCalendar(paths, rec).catch(e => { $('calHol').innerHTML = `<div class="empty">${esc(e.message)}</div>` });
     // artwork: shelf (newest 40) + uploads the Action hasn't filed yet
     const artJson = paths.filter(p => /^studio\/artwork\/[^/]+\/art\.json$/.test(p) && !p.startsWith('studio/artwork/queue/')).sort().reverse().slice(0, 40);
     const fresh = (await Promise.all(artJson.map(jsonAt))).filter(Boolean).sort((a, b) => (b.added || '').localeCompare(a.added || ''));

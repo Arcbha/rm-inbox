@@ -280,6 +280,7 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;min-he
 .rules td,.rules th{border-top:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top}.rules th{color:var(--sub);font-weight:600}
 .rules details{border-top:1px solid var(--line);padding:8px 0}.rules details>summary{font-weight:700;font-size:18px;padding:6px 0;cursor:pointer;list-style:none}
 .rules details>summary::-webkit-details-marker{display:none}.rules details>summary::after{content:' ▾';color:var(--sub);font-weight:500}
+.cal{display:grid;grid-template-columns:auto 1fr auto;gap:6px 12px;font-size:14px;align-items:baseline;margin:6px 0 10px}.cal .t{font-weight:700;font-variant-numeric:tabular-nums}.cal .o{color:var(--sub);font-size:12.5px}
 .rules mark{background:rgba(10,92,255,.15);color:inherit;border-radius:3px}
 /* cover-art picker */
 .chosen{display:flex;align-items:center;gap:10px}
@@ -359,6 +360,12 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
           <button class="btn ghost small" id="usageGo" type="button">Refresh</button></div>
         <div id="usageList"><div class="empty">Loading…</div></div>
         <div class="msg" id="usageMsg"></div>
+      </div>
+      <div class="card" id="calCard">
+        <h2>Market calendar</h2>
+        <p class="hint" id="calHint" style="margin:0 0 6px">—</p>
+        <div id="calToday"></div>
+        <div id="calHol"><div class="empty">Loading…</div></div>
       </div>
       <div class="card">
         <h2>Market now</h2>
@@ -551,7 +558,7 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
 
     <!-- More: the reference library, what you sent, studio status -->
     <section data-pane="more" class="hide">
-      <div class="seg" data-seg="more" data-noswipe><button data-s="library">Library</button><button data-s="mine">Sent to learn</button><button data-s="status">Status</button><button data-s="rules">Rulebook</button></div>
+      <div class="seg" data-seg="more" data-noswipe><button data-s="library">Library</button><button data-s="mine">Sent to learn</button><button data-s="status">Status</button><button data-s="rules">Rulebook</button><button data-s="playbook">Playbook</button></div>
       <div data-sub="library" class="hide">
       <div class="card">
         <div class="row" style="justify-content:space-between"><div><h2>Learning library</h2><p class="hint" id="libCount" style="margin:0">—</p></div>
@@ -580,6 +587,13 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="card"><div class="row" style="justify-content:space-between"><div><h2>Rulebook</h2><p class="hint" id="rulesStamp" style="margin:0">—</p></div></div>
         <div class="msg" id="rulesMsg"></div></div>
       <div class="card rules" id="rulesBody"><div class="empty">Loading…</div></div>
+      </div>
+      <div data-sub="playbook" class="hide">
+      <div class="card"><div class="row" style="justify-content:space-between"><div><h2>Playbook</h2><p class="hint" id="pbStamp" style="margin:0">—</p></div>
+        <button class="btn ghost small" id="pbReload" type="button">Reload</button></div>
+        <p class="hint" style="margin:8px 0 0">Every rule and taste verdict the studio has learned from you, in full (studio/PLAYBOOK.md). Tap a section to open it.</p>
+        <div class="msg" id="pbMsg"></div></div>
+      <div class="card rules" id="pbBody"><div class="empty">Loading…</div></div>
       </div>
       <div class="foot"><span id="repoLbl"></span><button id="forget">Forget token</button></div>
     </section>
