@@ -1563,7 +1563,7 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-runb
 // ---------- deep dives (editor 2026-11-27, Finance_Repo studio/schedule/DEEPDIVE.md) ----------
 // news/deepdive/<date>/<midday|evening>.json: 4–5 candidates (one stock/company, sector or macro theme each). Build this → chosen +
 // a build request; Skip today → skipped; nothing by the build time → the scheduler builds the top pick with the next artwork.
-const DD = { midday: { el: 'ddMid', name: 'Midday', menu: '10:30 am', build: '11:30 am', runs: ['midday-menu', 'midday'] },
+const DD = { midday: { el: 'ddMid', name: 'Midday', menu: '11:30 am', build: '12:30 pm', runs: ['midday-menu', 'midday'] },
   evening: { el: 'ddEve', name: 'Evening', menu: '6:30 pm', build: '7:30 pm', runs: ['evening-menu', 'evening'] } };
 const LENS = { stock: 'Stock', company: 'Company', sector: 'Sector', macro: 'Macro' };
 let ddMenu = {}, ddBusy = {};
@@ -1701,7 +1701,8 @@ async function fillHistory(list) {
 function drawBrief(b, path) {
   nowBrief = { b, path };
   const host = u => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return '' } };
-  $('nowBrief').innerHTML = `<details class="hist latest"><summary><span class="when">${esc(b.date)} · ${esc(b.time_ist)} IST · ${esc(b.market_phase)}</span><b>${esc(b.headline || '')}</b><span class="more">Show the ${(b.points || []).length} points ▼</span></summary>
+  $('nowBrief').innerHTML = `<details class="hist latest"><summary><span class="when">${esc(b.date)} · ${esc(b.time_ist)} IST · ${esc(b.market_phase)}</span><span class="more">Show the ${(b.points || []).length} points ▼</span></summary>
+    <div class="bh">${esc(b.headline || '')}</div>
     <ol>${(b.points || []).map(p => `<li><b>${esc(p.title)}</b><div class="w">${esc(p.what)}</div><div class="y">${esc(p.why)}</div>
       ${(p.watch || []).length ? `<div class="tagrow" style="margin-top:4px">${p.watch.map(w => `<span class="tag">${esc(w)}</span>`).join('')}</div>` : ''}
       <div class="srcs">${(p.sources || []).map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.outlet || host(s.url))} ↗</a>`).join('')}</div></li>`).join('')}</ol>
