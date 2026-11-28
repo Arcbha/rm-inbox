@@ -594,11 +594,32 @@ document.querySelectorAll('[data-seg] button').forEach(b => b.onclick = () => sh
 // in one) and thumbnails. Ignored only inside the carousel strips (they scroll sideways), videos (scrubbing) and selects.
 const TABS = [...document.querySelectorAll('.tabs button')].map(b => b.dataset.tab);
 let sw = null;
+// Typing stays put (editor 2026-11-28: "whenever I start writing the text for artwork it goes up or down or moves the view").
+// While a text field has focus: no tab swipes, the fixed bottom bars step aside for the keyboard (body.typing), and any
+// layout shift above the field (the live bar refreshing, the artwork prompt, a list redraw) is cancelled by scrolling back
+// by the same amount, so the field never moves under your thumb. Your own scrolling is left alone.
+const TYPEABLE = 'textarea,input:not([type=file]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit])';
+const typingIn = () => { const a = document.activeElement; return a && a.matches && a.matches(TYPEABLE) ? a : null };
+let tyEl = null, tyTop = 0, tyY = 0, tyRaf = 0;
+function typingWatch() {
+  const el = typingIn();
+  if (!el || el !== tyEl || !el.isConnected) { tyEl = null; tyRaf = 0; return }
+  const top = el.getBoundingClientRect().top, y = window.scrollY;
+  if (y !== tyY) { tyY = y; tyTop = top }                              // you (or the keyboard) scrolled: new resting place
+  else if (Math.abs(top - tyTop) > 1) { window.scrollBy(0, top - tyTop); tyY = window.scrollY; tyTop = el.getBoundingClientRect().top }   // the page shifted: undo it
+  tyRaf = requestAnimationFrame(typingWatch);
+}
+document.addEventListener('focusin', e => {
+  if (!e.target.matches || !e.target.matches(TYPEABLE)) return;
+  document.body.classList.add('typing');
+  tyEl = e.target; tyY = window.scrollY; tyTop = tyEl.getBoundingClientRect().top;
+  if (!tyRaf) tyRaf = requestAnimationFrame(typingWatch);
+});
+document.addEventListener('focusout', () => setTimeout(() => { if (!typingIn()) { document.body.classList.remove('typing'); if (bmRedrawLater) { bmRedrawLater = false; drawBookmarks() } } }, 120));
 const curPane = () => document.querySelector(`[data-pane="${store.get(K.tab) || 'today'}"]`);
 document.addEventListener('touchstart', e => {
   const t = e.target;
-  if (e.touches.length !== 1 || !cfg().tok || t.closest('select,video,.strip,.sheet,.lightbox,[data-noswipe]') ||
-    (t.closest('input,textarea') && t.closest('input,textarea') === document.activeElement)) { sw = null; return }
+  if (e.touches.length !== 1 || !cfg().tok || t.closest('select,video,.strip,.sheet,.lightbox,[data-noswipe]') || typingIn()) { sw = null; return }
   sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now(), axis: '', dx: 0, pane: curPane() };
 }, { passive: true });
 document.addEventListener('touchmove', e => {
@@ -1837,7 +1858,7 @@ function drawUpcoming(items, queued, builds = []) {
 // No Action processes them and no agent reads them (Finance_Repo bookmarks/README.md).
 let bmShots = [], bms = [], bmPaths = [], bmShown = 60, bmSrc = 'unused', bmThumb = {}, bmLoading = false;
 const BM_SRC = [['unused', 'Not used'], ['used', 'Used']];      // editor 2026-11-27: only two sections; screenshots and uploads are the same thing
-let bmSel = null, bmEdit = null;   // select mode: Set of bookmark ids (bulk delete, editor 2026-11-28) · id whose note is being edited
+let bmSel = null, bmEdit = null, bmRedrawLater = false;   // select mode: Set of bookmark ids (bulk delete, editor 2026-11-28) · id whose note is being edited
 let bmUsed = {}, bmArts = {};   // bookmark id → the post that used it · bookmark id → its studio/artwork art.json files (to mark it not used again)
 const bmSource = u => u ? srcOf(u) || 'web' : 'shot';
 const ytId = u => { const m = (u || '').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/); return m ? m[1] : '' };
@@ -1903,7 +1924,8 @@ async function loadBookmarks(more) {
     const got = (await Promise.all(want.map(jsonAt))).filter(Boolean);
     const keep = new Set(bmPaths.map(p => p.split('/')[1]));
     bms = [...bms, ...got].filter((b, i, a) => a.findIndex(x => x.id === b.id) === i && keep.has(b.id)).sort((a, b) => (b.id || '').localeCompare(a.id || ''));
-    clearMsg('bmListMsg'); drawBookmarks();
+    clearMsg('bmListMsg');
+    if (typingIn() && $('bmGrid').contains(typingIn())) bmRedrawLater = true; else drawBookmarks();   // never redraw under a note being typed
   } catch (e) { msg('bmListMsg', 'err', esc(e.message)) }
   bmLoading = false;
 }
@@ -1919,7 +1941,7 @@ function drawBookmarks() {
     const day = new Date(b.added).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
     const on = bmSel && bmSel.has(b.id);
     const noteHtml = bmSel ? (b.note ? `<div class="nt">${esc(b.note)}</div>` : '')
-      : bmEdit === b.id ? `<textarea data-note="${esc(b.id)}" placeholder="How you'd use it — Claude listens, then decides">${esc(b.note || '')}</textarea><div class="ne"><button data-ncancel>Cancel</button><button data-nsave="${esc(b.id)}">Save</button></div>`
+      : bmEdit === b.id ? `<textarea data-note="${esc(b.id)}" enterkeyhint="done" placeholder="How you'd use it — Claude listens, then decides">${esc(b.note || '')}</textarea><div class="ne"><button data-ncancel>Cancel</button><button data-nsave="${esc(b.id)}">Save</button></div>`
       : b.note ? `<div class="nt idea" data-nedit="${esc(b.id)}" title="Edit your idea">${esc(b.note)} ✎</div>` : `<div class="nt add" data-nedit="${esc(b.id)}">＋ Your idea for it</div>`;
     return `<div class="bm${on ? ' on' : ''}"><div class="bp" data-open="${esc(b.id)}">${bmSel ? `<span class="ck">${on ? '✓' : ''}</span>` : ''}<span class="big">${esc(NAME[b.source] || 'Link')}</span>${isUsed(b) ? `<span class="used">USED · ${esc(String(bmUsed[b.id]).slice(0, 22))}</span>` : ''}${(b.images || []).length > 1 ? `<span class="cnt">${b.images.length}</span>` : ''}</div>
       <div class="bb">${noteHtml}<div class="dt">${esc(day)}${host ? ' · ' + esc(host) : ''}</div>
@@ -1988,6 +2010,15 @@ async function deleteBm(btn, id) {
   } catch (e) { msg('bmListMsg', 'err', esc(e.message)); btn.disabled = false }
 }
 $('bmMore').onclick = () => { bmShown += 60; loadBookmarks(true) };
+// Enter saves (editor 2026-11-28: "Enter … should go for saving and not the next line"); Shift+Enter still makes a new line.
+const enterSaves = e => e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229;
+[['bmUrl', 'bmSave'], ['bmNote', 'bmSave'], ['popName', 'popSave'], ['popNote', 'popSave']].forEach(([f, b]) => $(f).addEventListener('keydown', e => {
+  if (!enterSaves(e)) return; e.preventDefault(); if (!$(b).disabled) { $(f).blur(); $(b).click() }
+}));
+$('bmGrid').addEventListener('keydown', e => {
+  const t = e.target.closest && e.target.closest('textarea[data-note]'); if (!t || !enterSaves(e)) return;
+  e.preventDefault(); const b = $('bmGrid').querySelector('[data-nsave]'); if (b && !b.disabled) { b.click(); t.blur() }
+});
 // Bulk delete (editor 2026-11-28: "a checkbox kind of setup for bulk deleting together"): Select → tick cards → Delete n, one commit.
 $('bmSelect').onclick = () => { bmSel = bmSel ? null : new Set(); bmEdit = null; clearMsg('bmListMsg'); drawBookmarks() };
 $('bmSelDone').onclick = () => { bmSel = null; drawBookmarks() };
