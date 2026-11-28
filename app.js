@@ -3,7 +3,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const API = 'https://api.github.com';
-const APP_VERSION = '2026-11-28c';   // shown in More's footer: which build the phone is running
+const APP_VERSION = '2026-11-28d';   // shown in More's footer: which build the phone is running
 const K = { tok: 'rm.token', repo: 'rm.repo', branch: 'rm.branch', tab: 'rm.tab' };
 const MAX_VIDEO = 90 * 1024 * 1024, MAX_SIDE = 2000, JPEG_Q = 0.85;
 
@@ -118,7 +118,7 @@ function buildFile(slug, kind, note = '', extra = {}) {
   return { path: `studio/schedule/build/build-${istStamp()}-${slug}`.slice(0, 110) + '.json',
     b64: b64utf8(JSON.stringify({ slug, kind, note, ...extra, added: new Date().toISOString(), status: 'pending', by: 'rm-inbox' }, null, 2) + '\n') };
 }
-const KIND_WORD = { menu: 'Deep-dive menu', midday: 'Midday deep dive', evening: 'Evening deep dive', carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', revise: 'Fix', rate: 'Rating', resume: 'Answer' };
+const KIND_WORD = { menu: 'Deep-dive menu', midday: 'Midday deep dive', evening: 'Evening deep dive', carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', revise: 'Fix', rate: 'Rating', resume: 'Answer', continue: 'Chat run, continued' };
 let artStatusAt = 0;
 function drawArtPrompt(st) {                       // editor 2026-11-27: "once artworks are all exhausted it can give a prompt at the header"
   const el = $('artPrompt'), off = (() => { try { return localStorage.getItem('rm.artPromptOff') === new Date().toDateString() } catch { return false } })();
@@ -1412,7 +1412,7 @@ const istDay = (plus = 0) => new Date(Date.now() + 5.5 * 3600e3 + plus * 864e5).
 const jsonAt = p => fileText(p).then(JSON.parse).catch(() => null);
 const fmtDate = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) } catch { return d } };
 const USE_AS = { cover: 'cover', wild: 'WILD slide', slide: 'a slide', any: 'Claude decides' };
-const KIND_NAME = { carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', custom: 'Custom' };
+const KIND_NAME = { carousel: 'Carousel', poster: 'Poster', reel: 'Reel', premarket: 'Pre-market post', postmarket: 'Post-market post', custom: 'Custom', continue: 'Chat run, continued' };
 const SLOT_NAME = { premarket: 'pre-market post', postmarket: 'post-market post', any: 'any post' };
 const useLine = a => (a.use_on === 'next' ? `next ${SLOT_NAME[a.slot] || 'post'}` : a.use_on ? `${fmtDate(a.use_on)} · ${SLOT_NAME[a.slot] || 'any post'}` : 'on the shelf') + ` · ${USE_AS[a.for] || a.for || ''}`;
 let shelf = [], bmArt = [], artPick = new Set(), planPaths = [], planSha = {}, planLoading = false, planAgain = false, runBusy = {}, pickBusy = false;   // pickers list bookmarks with pictures (editor 2026-11-26)
