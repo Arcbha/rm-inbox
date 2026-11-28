@@ -64,6 +64,7 @@ h1 .logo{width:34px;height:34px;flex:none;border-radius:10px;box-shadow:0 6px 16
 .bm .bb .ba{display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:4px}
 .bm .bb .ba a{font-size:12px;font-weight:700;color:var(--blue);text-decoration:none}
 .bm .bb .ba button{border:0;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--loss);padding:4px 0}
+body.typing .tabs,body.typing .bmsel,body.typing .lbx,body.typing .fabx{display:none}
 .bmtop{display:flex;gap:8px;align-items:center}.bmtop .seg{flex:1;min-width:0}.bmtop .btn{flex:0 0 auto;padding:10px 14px;margin:0}
 .bm .bp .ck{position:absolute;left:8px;top:8px;width:28px;height:28px;border-radius:50%;border:2px solid #fff;background:rgba(13,18,34,.35);box-shadow:0 1px 4px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800}
 .bm.on .bp .ck{background:var(--blue);border-color:var(--blue)}.bm.on .bp{outline:3px solid var(--blue);outline-offset:-3px}
@@ -72,7 +73,7 @@ h1 .logo{width:34px;height:34px;flex:none;border-radius:10px;box-shadow:0 6px 16
 .bmsel span{flex:1;min-width:0}.bmsel button{border:0;background:none;font:inherit;font-weight:700;color:var(--blue);padding:8px 10px;border-radius:10px}
 .bmsel button.del{background:var(--loss);color:#fff}.bmsel button:disabled{opacity:.4}
 .bm .bb .nt.add{color:var(--sub);font-weight:600;cursor:pointer}.bm .bb .nt.idea{cursor:pointer}
-.bm .bb textarea{width:100%;min-height:64px;font:inherit;font-size:13px;border-radius:10px;border:1px solid var(--line,#d9dde7);padding:6px 8px;resize:vertical;box-sizing:border-box}
+.bm .bb textarea{width:100%;min-height:64px;font:inherit;font-size:16px;border-radius:10px;border:1px solid var(--line,#d9dde7);padding:6px 8px;resize:vertical;box-sizing:border-box}
 .bm .bb .ne{display:flex;gap:10px;justify-content:flex-end}.bm .bb .ne button{border:0;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--blue);padding:4px 0}
 .bm .bb .ba button.armed{background:var(--loss);color:#fff;border-radius:8px;padding:4px 8px}
 .lightbox{position:fixed;inset:0;z-index:40;background:rgba(13,18,34,.94);display:flex;align-items:center}
@@ -517,13 +518,13 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div data-sub="bookmarks" class="hide">
       <div class="card">
         <h2>Save artwork</h2>
-        <input id="bmUrl" type="url" inputmode="url" placeholder="Paste a link — Instagram, YouTube, X, any site" autocapitalize="off" spellcheck="false">
+        <input id="bmUrl" enterkeyhint="done" type="url" inputmode="url" placeholder="Paste a link — Instagram, YouTube, X, any site" autocapitalize="off" spellcheck="false">
         <div style="height:10px"></div>
         <div class="drop" id="bmDrop">…or paste, drop, or <b>choose screenshots</b>
           <input id="bmFiles" type="file" accept="image/*" multiple class="hide"></div>
         <div class="thumbs" id="bmThumbs"></div>
         <label for="bmNote">Your idea for it</label>
-        <input id="bmNote" placeholder="optional — how you'd use it (Claude listens, then decides)">
+        <input id="bmNote" enterkeyhint="done" placeholder="optional — how you'd use it (Claude listens, then decides)">
         <div style="height:14px"></div>
         <button class="btn primary" id="bmSave" disabled>Save</button>
         <div class="bar" id="bmBar"><i></i></div>
@@ -540,9 +541,9 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
         <h2>Add pop culture</h2>
         <p class="pophelp">Anything hot right now: a show, a film in trend, a news moment, a controversy, a viral reel. The writers use it only when it makes a post witty, funny or clever. Otherwise it waits.</p>
         <label for="popName">What is it</label>
-        <input id="popName" placeholder="e.g. Koffee with Karan" maxlength="80">
+        <input id="popName" enterkeyhint="done" placeholder="e.g. Koffee with Karan" maxlength="80">
         <label for="popNote">Note</label>
-        <textarea id="popNote" rows="3" placeholder="optional: the couch, the coffee, rapid-fire, the hamper, a famous line…"></textarea>
+        <textarea id="popNote" enterkeyhint="done" rows="3" placeholder="optional: the couch, the coffee, rapid-fire, the hamper, a famous line…"></textarea>
         <div style="height:10px"></div>
         <div class="drop" id="popDrop">Pictures, optional: paste, drop, or <b>choose</b>
           <input id="popFiles" type="file" accept="image/*" multiple class="hide"></div>
