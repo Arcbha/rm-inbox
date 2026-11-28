@@ -236,7 +236,7 @@ function drawLive(rows, blocked, lv) {
 }
 $('artPrompt').addEventListener('click', e => {
   if (e.target.closest('button')) { try { localStorage.setItem('rm.artPromptOff', new Date().toDateString()) } catch {} $('artPrompt').classList.add('hide'); return }
-  showTab('saved'); window.scrollTo({ top: 0 });
+  store.set('rm.sub.saved', 'bookmarks'); showTab('saved'); window.scrollTo({ top: 0 });
 });
 $('liveSum').onclick = () => { liveOpen = !liveOpen; $('liveList').classList.toggle('hide', !liveOpen); const c = $('liveSum').querySelector('.chev'); if (c) c.textContent = liveOpen ? '▲' : '▼' };
 $('liveList').addEventListener('click', async e => {
@@ -510,7 +510,7 @@ $('forget').onclick = () => { if (armTap($('forget'), 'Tap again to forget')) { 
 let statusTimer = null;
 const TITLE = { today: 'Pre & Post Market', add: 'Newsroom', saved: 'Artwork', studio: 'Studio', learn: 'Learning center', more: 'More' };
 const OLDTAB = { refs: 'learn', news: 'add', plan: 'today', library: 'more', status: 'more' };
-const SUBS = { add: ['news', 'schedule'], more: ['library', 'mine', 'status', 'rules', 'playbook'] };
+const SUBS = { add: ['news', 'schedule'], saved: ['bookmarks', 'pop'], more: ['library', 'mine', 'status', 'rules', 'playbook'] };
 const subOf = g => { const v = store.get('rm.sub.' + g); return SUBS[g].includes(v) ? v : SUBS[g][0] };
 // ---------- Claude usage left (editor 2026-11-27: "I want to know usage left only … and when it refreshes back") ----------
 // Finance_Repo's usage Action (every 3 h, after every build, and on Refresh) writes usage.json on the `usage` branch:
@@ -568,7 +568,6 @@ function showTab(t) {
   $('pageTitle').textContent = TITLE[t]; $('pageTitle').classList.remove('hide');
   clearInterval(statusTimer);
   if (t === 'today') { loadPlan(); loadUsage() }
-  if (t === 'saved') loadBookmarks();
   if (t === 'studio') loadReels();
   if (SUBS[t]) showSub(t, subOf(t));
 }
@@ -579,6 +578,8 @@ function showSub(g, s) {
   pane.querySelectorAll(`[data-seg="${g}"] button`).forEach(b => b.classList.toggle('on', b.dataset.s === s));
   clearInterval(statusTimer);
   if (['schedule', 'news'].includes(s)) loadPlan();
+  if (s === 'bookmarks') loadBookmarks();
+  if (s === 'pop') loadPop();
   if (s === 'library') loadLibrary();
   if (s === 'mine') loadMyRefs();
   if (s === 'rules') loadRules();
@@ -849,7 +850,7 @@ document.addEventListener('paste', e => {
   const tab = store.get(K.tab), sub = subOf('add');
   const files = [...(e.clipboardData || {}).items || []].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
   if (!files.length) return;
-  if (tab === 'saved') { e.preventDefault(); return addBm(files) }
+  if (tab === 'saved') { e.preventDefault(); return subOf('saved') === 'pop' ? addPop(files) : addBm(files) }
   if (tab === 'learn') { e.preventDefault(); return addUploads(files) }
   if (tab !== 'add' || sub !== 'news') return;
   e.preventDefault(); addImages(files)
@@ -2005,7 +2006,7 @@ function applyShared() {
   $('shareUrl').textContent = u; $('shareCard').classList.remove('hide');
   $('shareCard').querySelectorAll('[data-share]').forEach(b => b.onclick = () => {
     const to = b.dataset.share; $('shareCard').classList.add('hide');
-    if (to === 'bookmark') { showTab('saved'); $('bmUrl').value = u; validateBm(); $('bmNote').focus(); return }
+    if (to === 'bookmark') { store.set('rm.sub.saved', 'bookmarks'); showTab('saved'); $('bmUrl').value = u; validateBm(); $('bmNote').focus(); return }
     if (to === 'reference') showTab('learn'); else showSub('add', to);
     if (to === 'news') { $('aurl').value = u; validateNews() }
     else {
@@ -2042,3 +2043,119 @@ applyShared();
     setTimeout(() => { popping = false }, 0);
   });
 })();
+
+// ---------- pop culture shelf (editor 2026-11-28): anything hot (a show, a film in trend, a news moment, a controversy, a viral
+// moment). Finance_Repo studio/popculture/<id>/cue.json {id, name, note, images, added, by, archived, uses} + 01.jpg …, written
+// straight in one commit (contract: Finance_Repo studio/schedule/README.md § Pop-culture shelf). The pop-wit agent uses a cue only
+// when it makes a post witty, funny or clever; the engine owns `uses` (picked → used); a used cue cools down, then comes back.
+var popShots = [], pops = [], popCool = 14, popF = 'ready', popThumb = {}, popLoading = false;   // var: showTab runs loadPop at start-up, before this line
+const validatePop = () => { $('popSave').disabled = !$('popName').value.trim() };
+$('popName').oninput = validatePop;
+async function addPop(list) {
+  for (const f of [...list].filter(f => f.type.startsWith('image/'))) {
+    try { const blob = await compress(f); popShots.push({ blob, url: URL.createObjectURL(blob) }) } catch { msg('popMsg', 'err', `Couldn’t read ${esc(f.name || 'an image')}.`) }
+  }
+  drawPopShots();
+}
+function drawPopShots() {
+  $('popThumbs').innerHTML = popShots.map((s, i) => `<div class="th"><img src="${s.url}" alt=""><div class="ctl"><span></span><button class="x" data-i="${i}" aria-label="Remove">×</button><span></span></div></div>`).join('');
+  $('popThumbs').querySelectorAll('button').forEach(b => b.onclick = () => { URL.revokeObjectURL(popShots[+b.dataset.i].url); popShots.splice(+b.dataset.i, 1); drawPopShots() });
+}
+$('popDrop').onclick = e => { if (e.target.tagName !== 'INPUT') $('popFiles').click() };
+$('popFiles').onchange = () => { addPop($('popFiles').files); $('popFiles').value = '' };
+['dragenter', 'dragover'].forEach(ev => $('popDrop').addEventListener(ev, e => { e.preventDefault(); $('popDrop').classList.add('over') }));
+['dragleave', 'drop'].forEach(ev => $('popDrop').addEventListener(ev, e => { e.preventDefault(); $('popDrop').classList.remove('over') }));
+$('popDrop').addEventListener('drop', e => addPop(e.dataTransfer.files));
+$('popSave').onclick = async () => {
+  const btn = $('popSave'), name = $('popName').value.trim(); if (!name) return;
+  btn.disabled = true; clearMsg('popMsg');
+  try {
+    const id = `${istStamp()}-${slugify(name).slice(0, 40) || 'cue'}`, names = popShots.map((_, i) => String(i + 1).padStart(2, '0') + '.jpg');
+    const istNow = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 19) + '+05:30';
+    const meta = { id, name, note: $('popNote').value.trim(), images: names, added: istNow, by: 'rm-inbox', archived: false, uses: [] };
+    const files = [];
+    for (let i = 0; i < popShots.length; i++) files.push({ path: `studio/popculture/${id}/${names[i]}`, b64: await readB64(popShots[i].blob) });
+    files.push({ path: `studio/popculture/${id}/cue.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') });
+    await commitFiles(files, `rm-inbox: pop culture ${id}`, p => bar('popBar', p));
+    popShots.forEach(s => URL.revokeObjectURL(s.url)); popShots = []; drawPopShots();
+    $('popName').value = ''; $('popNote').value = ''; validatePop();
+    pops.unshift({ ...meta, _p: `studio/popculture/${id}/cue.json` }); popF = 'ready'; drawPop();
+    msg('popMsg', 'ok', 'Saved. The writers can use it from the next post.');
+  } catch (e) { msg('popMsg', 'err', esc(e.message)); btn.disabled = false }
+  bar('popBar', null);
+};
+async function loadPop() {
+  if (popLoading || !cfg().tok) return; popLoading = true;
+  try {
+    const { repo, branch } = cfg();
+    const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+    const paths = tree.tree.filter(t => t.type === 'blob' && /^studio\/popculture\/[^/]+\/cue\.json$/.test(t.path)).map(t => t.path);
+    if (tree.tree.some(t => t.path === 'studio/popculture/config.json')) { const c = await jsonAt('studio/popculture/config.json'); if (c && c.cooldown_days) popCool = +c.cooldown_days }
+    pops = (await Promise.all(paths.map(async p => { const j = await jsonAt(p); return j && { ...j, _p: p } }))).filter(Boolean)
+      .sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+    clearMsg('popListMsg'); drawPop();
+  } catch (e) { msg('popListMsg', 'err', esc(e.message)) }
+  popLoading = false;
+}
+const istToday = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+function popState(c) {         // same rules as Finance_Repo engine/popculture.py state()
+  if (c.archived) return { k: 'archived', t: 'Archived' };
+  const uses = c.uses || [], pk = uses.find(u => u.status === 'picked');
+  if (pk) return { k: 'used', t: `In progress · ${pk.slug || 'a post'}` };
+  const last = uses.filter(u => u.status === 'used' && u.date).map(u => u.date.slice(0, 10)).sort().pop();
+  if (last) { const back = addDays(last, popCool); if (istToday() < back) return { k: 'used', t: `Used ${fmtDate(last)} · back ${fmtDate(back)}`, last } }
+  return { k: 'ready', t: last ? `Ready · last used ${fmtDate(last)}` : 'Ready', last };
+}
+function drawPop() {
+  const F = [['ready', 'Ready'], ['used', 'Used'], ['archived', 'Archived']];
+  $('popFilter').innerHTML = F.map(([k, n]) => `<button class="${popF === k ? 'on' : ''}" data-f="${k}">${n} · ${pops.filter(c => popState(c).k === k).length}</button>`).join('');
+  $('popFilter').querySelectorAll('button').forEach(b => b.onclick = () => { popF = b.dataset.f; drawPop() });
+  const shown = pops.filter(c => popState(c).k === popF);
+  $('popList').innerHTML = shown.map(c => {
+    const st = popState(c), n = (c.uses || []).filter(u => u.status === 'used').length;
+    const last = (c.uses || []).filter(u => u.status === 'used' && u.how).pop();
+    const canDel = !(c.uses || []).length;
+    return `<div class="pop"><div class="pt" data-open="${esc(c.id)}">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</div>
+      <div class="pb"><div class="pn">${esc(c.name)}</div>${c.note ? `<div class="pnote">${esc(c.note)}</div>` : ''}
+      <div class="pst ${st.k}">${esc(st.t)}${n ? ` · used ${n}×` : ''}</div>${last ? `<div class="pst">Last: ${esc(last.slug || '')}${last.how ? ' · ' + esc(String(last.how).slice(0, 90)) : ''}</div>` : ''}
+      <div class="pa"><button data-arch="${esc(c.id)}">${c.archived ? 'Bring back' : 'Archive'}</button>${canDel ? `<button class="del" data-del="${esc(c.id)}">Delete</button>` : ''}</div></div></div>`;
+  }).join('') || `<div class="empty">${pops.length ? 'Nothing here.' : 'Nothing saved yet. Add something hot above; with an empty shelf the posts are made as usual.'}</div>`;
+  for (const c of shown) {
+    const el = $('popList').querySelector(`[data-open="${CSS.escape(c.id)}"]`); if (!el || !(c.images || []).length) continue;
+    const set = u => { el.style.backgroundImage = `url(${u})`; el.textContent = '' };
+    if (popThumb[c.id]) set(popThumb[c.id]); else rawBlobUrl(`studio/popculture/${c.id}/${c.images[0]}`).then(u => { if (u) { popThumb[c.id] = u; set(u) } });
+    el.onclick = () => openPopBox(c);
+  }
+  $('popList').querySelectorAll('[data-arch]').forEach(b => b.onclick = () => archivePop(b, b.dataset.arch));
+  $('popList').querySelectorAll('[data-del]').forEach(b => b.onclick = () => deletePop(b, b.dataset.del));
+}
+function openPopBox(c) {
+  $('lbStrip').innerHTML = c.images.map((_, i) => `<img data-i="${i}" alt="">`).join(''); $('lightbox').classList.remove('hide');
+  c.images.forEach(async (n, i) => { const u = i === 0 && popThumb[c.id] ? popThumb[c.id] : await rawBlobUrl(`studio/popculture/${c.id}/${n}`); const im = $('lbStrip').querySelector(`[data-i="${i}"]`); if (u && im) im.src = u });
+}
+async function archivePop(btn, id) {               // the page only flips `archived`; it re-reads the file at the head so `uses` the engine wrote stay
+  const c = pops.find(x => x.id === id); if (!c) return;
+  btn.disabled = true;
+  try {
+    const { repo } = cfg(); let to;
+    await commitFiles([], `rm-inbox: pop culture ${id} → ${c.archived ? 'back on the shelf' : 'archived'}`, null, async head => {
+      const j = JSON.parse(utf8b64((await api(`/repos/${repo}/contents/${c._p}?ref=${head}`)).content));
+      j.archived = to = !c.archived;
+      Object.assign(c, j);
+      return [{ path: c._p, b64: b64utf8(JSON.stringify(j, null, 2) + '\n') }];
+    });
+    popF = to ? 'archived' : popState(c).k; drawPop();
+  } catch (e) { btn.disabled = false; msg('popListMsg', 'err', esc(e.message)) }
+}
+async function deletePop(btn, id) {
+  if (!armTap(btn, 'Sure?')) return;
+  btn.disabled = true;
+  try {
+    const { repo, branch } = cfg();
+    const tree = await api(`/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+    const files = tree.tree.filter(t => t.type === 'blob' && t.path.startsWith(`studio/popculture/${id}/`)).map(t => ({ path: t.path, del: true }));
+    if (files.length) await commitFiles(files, `rm-inbox: delete pop culture ${id}`);
+    pops = pops.filter(c => c.id !== id); drawPop();
+  } catch (e) { btn.disabled = false; msg('popListMsg', 'err', esc(e.message)) }
+}

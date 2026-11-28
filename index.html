@@ -127,6 +127,19 @@ input[type=file]::file-selector-button{font:inherit;font-weight:600;color:var(--
 .item .e{font-size:13px;color:#b4241b;margin-top:4px;white-space:pre-wrap}
 .item .acts{display:flex;gap:6px;margin-top:8px}
 .empty{font-size:14px;color:var(--sub);padding:6px 0}
+.pophelp{font-size:13px;color:var(--sub);margin:0 0 10px}
+.poplist{display:flex;flex-direction:column;gap:10px}
+.pop{background:var(--surf);border-radius:18px;box-shadow:var(--shadow);display:flex;gap:12px;padding:10px;align-items:flex-start}
+.pop .pt{flex:none;width:64px;height:80px;border-radius:12px;background:#dfe3ec center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--sub);cursor:pointer}
+.pop .pb{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;font-size:13px}
+.pop .pn{font-size:15px;font-weight:700;word-break:break-word}
+.pop .pnote{color:var(--ink);word-break:break-word}
+.pop .pst{font-size:12px;font-weight:700;color:var(--sub)}
+.pop .pst.ready{color:var(--gain)}
+.pop .pa{display:flex;gap:14px;margin-top:4px}
+.pop .pa button{border:0;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--blue);padding:4px 0}
+.pop .pa button.del{color:var(--loss)}
+.pop .pa button.armed{background:var(--loss);color:#fff;border-radius:8px;padding:4px 8px}
 .hide{display:none!important}
 .foot{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--sub);margin-top:8px}
 .foot button{background:none;border:0;font:inherit;color:var(--loss);font-weight:600}
@@ -490,6 +503,8 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
 
     <!-- Bookmarks: the one place to save anything; a bookmark with pictures can be picked as artwork in Pre & Post and Newsroom -->
     <section data-pane="saved" class="hide">
+      <div class="seg" data-seg="saved" data-noswipe><button data-s="bookmarks">Bookmarks</button><button data-s="pop">Pop culture</button></div>
+      <div data-sub="bookmarks" class="hide">
       <div class="card">
         <h2>Save artwork</h2>
         <input id="bmUrl" type="url" inputmode="url" placeholder="Paste a link — Instagram, YouTube, X, any site" autocapitalize="off" spellcheck="false">
@@ -508,6 +523,28 @@ code{font-size:13px;background:rgba(13,18,34,.06);border-radius:6px;padding:1px 
       <div class="msg" id="bmListMsg"></div>
       <div class="bmgrid" id="bmGrid"><div class="empty">Loading…</div></div>
       <div style="height:12px"></div><button class="btn ghost hide" id="bmMore" style="width:100%">Show more</button>
+      </div>
+      <div data-sub="pop" class="hide">
+      <div class="card">
+        <h2>Add pop culture</h2>
+        <p class="pophelp">Anything hot right now: a show, a film in trend, a news moment, a controversy, a viral reel. The writers use it only when it makes a post witty, funny or clever. Otherwise it waits.</p>
+        <label for="popName">What is it</label>
+        <input id="popName" placeholder="e.g. Koffee with Karan" maxlength="80">
+        <label for="popNote">Note</label>
+        <textarea id="popNote" rows="3" placeholder="optional: the couch, the coffee, rapid-fire, the hamper, a famous line…"></textarea>
+        <div style="height:10px"></div>
+        <div class="drop" id="popDrop">Pictures, optional: paste, drop, or <b>choose</b>
+          <input id="popFiles" type="file" accept="image/*" multiple class="hide"></div>
+        <div class="thumbs" id="popThumbs"></div>
+        <div style="height:14px"></div>
+        <button class="btn primary" id="popSave" disabled>Save</button>
+        <div class="bar" id="popBar"><i></i></div>
+        <div class="msg" id="popMsg"></div>
+      </div>
+      <div class="seg" id="popFilter" data-noswipe></div>
+      <div class="msg" id="popListMsg"></div>
+      <div class="poplist" id="popList"><div class="empty">Loading…</div></div>
+      </div>
     </section>
 
     <section data-pane="studio" class="hide">
