@@ -1863,16 +1863,24 @@ $('bmSave').onclick = async () => {
     const url = ($('bmUrl').value.trim().match(/https?:\/\/[^\s<>"']+/) || [''])[0];
     const d = new Date(Date.now() + 5.5 * 3600e3).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
     let tail = ''; try { tail = url ? slugify(new URL(url).hostname.replace(/^www\./, '').split('.')[0]) : 'shots' } catch {}
-    const id = `${d}-${tail || 'bm'}`, names = bmShots.map((_, i) => String(i + 1).padStart(2, '0') + '.jpg');
-    const meta = { id, url, note: $('bmNote').value.trim(), source: bmSource(url), images: names, added: new Date().toISOString() };
-    const files = [];
-    for (let i = 0; i < bmShots.length; i++) files.push({ path: `bookmarks/${id}/${names[i]}`, b64: await readB64(bmShots[i].blob) });
-    files.push({ path: `bookmarks/${id}/bookmark.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') });
+    // editor 2026-11-28: screenshots without a link → one bookmark per picture (a bulk upload of 50 = 50 bookmarks, never one stack).
+    // With a link, its screenshots stay together on that link's bookmark.
+    const base = `${d}-${tail || 'bm'}`, note = $('bmNote').value.trim(), added = new Date().toISOString();
+    const groups = !url && bmShots.length > 1 ? bmShots.map((s, i) => ({ id: `${base}-${String(i + 1).padStart(Math.max(2, String(bmShots.length).length), '0')}`, shots: [s] })) : [{ id: base, shots: bmShots }];
+    const files = [], metas = [];
+    for (const g of groups) {
+      const names = g.shots.map((_, i) => String(i + 1).padStart(2, '0') + '.jpg');
+      const meta = { id: g.id, url, note, source: bmSource(url), images: names, added };
+      for (let i = 0; i < g.shots.length; i++) files.push({ path: `bookmarks/${g.id}/${names[i]}`, b64: await readB64(g.shots[i].blob) });
+      files.push({ path: `bookmarks/${g.id}/bookmark.json`, b64: b64utf8(JSON.stringify(meta, null, 2) + '\n') });
+      metas.push(meta);
+    }
+    const id = groups.length > 1 ? `${base} (${groups.length} bookmarks)` : base;
     await commitFiles(files, `rm-inbox: bookmark ${id}`, p => bar('bmBar', p));
-    msg('bmMsg', 'ok', 'Saved — it’s in the list below.'); setTimeout(() => loadBookmarks(), 1500);
+    msg('bmMsg', 'ok', metas.length > 1 ? `Saved ${metas.length} bookmarks — one per picture, in the list below.` : 'Saved — it’s in the list below.'); setTimeout(() => loadBookmarks(), 1500);
     bmShots.forEach(s => URL.revokeObjectURL(s.url)); bmShots = []; drawBmShots();
     $('bmUrl').value = ''; $('bmNote').value = ''; validateBm();
-    bms.unshift(meta);
+    bms.unshift(...metas);
   } catch (e) { msg('bmMsg', 'err', esc(e.message)); btn.disabled = false }
   bar('bmBar', null);
 };
