@@ -3,7 +3,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const API = 'https://api.github.com';
-const APP_VERSION = '2026-11-28a';   // shown in More's footer: which build the phone is running
+const APP_VERSION = '2026-11-28b';   // shown in More's footer: which build the phone is running
 const K = { tok: 'rm.token', repo: 'rm.repo', branch: 'rm.branch', tab: 'rm.tab' };
 const MAX_VIDEO = 90 * 1024 * 1024, MAX_SIDE = 2000, JPEG_Q = 0.85;
 
@@ -1143,6 +1143,8 @@ async function rawFile(path, type) {               // a repo file as a typed Blo
   if (!r.ok) { let m = ''; try { m = JSON.parse(await r.text()).message } catch {} throw new GhError(r.status, m) }
   return new Blob([await r.arrayBuffer()], { type });
 }
+// creation time on every post (editor 2026-11-28: "put a creation time against a post in studio") — IST, e.g. "27 Nov, 7:36 pm"
+const whenIST = iso => { try { const d = new Date(iso); return `${d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' })}, ${d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' })}` } catch { return iso } };
 function drawCarousels() {
   $('carWrap').classList.toggle('hide', !cars.length);
   $('carCount').textContent = cars.length || '';
@@ -1153,6 +1155,7 @@ function drawCarousels() {
       <div class="body"><div class="note" style="font-size:15px">${esc(c.title || c.slug)}</div>
         <div class="tagrow" style="margin-top:2px"><span class="tag">${c.slides.length} slides</span><span class="tag">${esc(c.theme || '')}</span></div>
         <div class="meta"><span>${esc(c.slug)} · audit ${st(c.audit)}</span></div>
+        <div class="meta"><span>${c.created ? `Created ${esc(whenIST(c.created))}` : ''}${c.rendered && c.rendered !== c.created ? `${c.created ? ' · ' : ''}updated ${esc(whenIST(c.rendered))}` : ''}${c.postDate ? ` · posts ${esc(fmtDate(c.postDate))}` : ''}</span></div>
         <div class="acts"><button class="btn ghost small danger" data-pdel="${esc(c.slug)}" style="flex:none">Delete</button><button class="btn primary small" data-share="${ci}">${c.slides.length > 3 ? 'Save for Instagram' : ready[cars[ci].slug + cars[ci].rendered] ? `Open share sheet · ${cars[ci].slides.length} ready` : 'Post to Instagram'}</button>${c.caption ? `<button class="btn ghost small" data-cap="${ci}">Copy caption</button>` : ''}</div>
         <div class="acts${c.slides.length > 3 ? ' hide' : ''}"><button class="btn ghost small" data-save="${ci}" style="flex:1">Save to phone (1080×1350)</button></div>
         <div class="acts"><button class="btn ghost small" data-edit="${ci}">Edit…</button><button class="btn ghost small" data-rate="published" data-ci="${ci}">Published</button><button class="btn ghost small" data-rate="not-published" data-ci="${ci}">Not posted</button></div>
